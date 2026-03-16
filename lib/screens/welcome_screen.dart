@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'home_screen.dart'; // <--- 1. EKLEME: Ana sayfayı tanıması için bu satır şart
+import 'package:shared_preferences/shared_preferences.dart';
+import 'home_screen.dart';
 
 // --- ANA EKRAN (WELCOME SCREEN) ---
 class HealthAppWelcomeScreen extends StatefulWidget {
@@ -10,13 +11,8 @@ class HealthAppWelcomeScreen extends StatefulWidget {
 }
 
 class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
-  // Giriş panelinin görünürlüğünü kontrol eden değişken
   bool _isLoginPanelVisible = false;
-
-  // E-posta formunun açık olup olmadığını kontrol eden değişken
   bool _isEmailFormVisible = false;
-
-  // Şartların kabul edilip edilmediğini kontrol eden değişken
   bool _isTermsAccepted = false;
 
   final _formKey = GlobalKey<FormState>();
@@ -43,13 +39,17 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
         fit: StackFit.expand,
         children: [
           // 1. KATMAN: Arkaplan Görseli
+          // Sabah güneşinde huzurlu bir orman/doğa görseli
           Image.network(
-            'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1520&q=80',
+            'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1520&q=80',
             fit: BoxFit.cover,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+              return Container(
+                color: const Color(0xFF4A6849),
+                child: const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
               );
             },
           ),
@@ -61,27 +61,30 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.1),
-                  Colors.black.withOpacity(0.7),
+                  Colors.black.withOpacity(0.15),
+                  Colors.black.withOpacity(0.75),
                 ],
-                stops: const [0.4, 1.0],
+                stops: const [0.3, 1.0],
               ),
             ),
           ),
 
-          // Ana Başlıklar
+          // 3. KATMAN: Ana Başlıklar (ORTALANMIŞ)
           AnimatedOpacity(
             duration: const Duration(milliseconds: 400),
             opacity: _isLoginPanelVisible ? 0.0 : 1.0,
-            child: const Positioned(
-              top: 100,
+            child: Positioned(
+              top: 0,
               left: 30,
               right: 30,
+              bottom: 150,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center, // ORTALANDI
+                children: const [
                   Text(
                     "Kendine İyi Bak.",
+                    textAlign: TextAlign.center, // ORTALANDI
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 40,
@@ -91,7 +94,8 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                   ),
                   SizedBox(height: 15),
                   Text(
-                    "Evinin huzurunda, bedeninle barışık, daha sağlıklı bir yaşama adım at.",
+                    "Evinin huzurunda, bedeninle barışık,\ndaha sağlıklı bir yaşama adım at.",
+                    textAlign: TextAlign.center, // ORTALANDI
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 17,
@@ -103,13 +107,13 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
             ),
           ),
 
-          // 3. KATMAN: Kaydırma Göstergesi
+          // 4. KATMAN: Kaydırma Göstergesi (Ekranın ALT YARISI — geniş alan)
           if (!_isLoginPanelVisible)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              height: 150,
+              height: screenHeight * 0.5, // Ekranın yarısı kadar alan
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onVerticalDragUpdate: (details) {
@@ -119,43 +123,50 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                     });
                   }
                 },
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.8),
-                      ],
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Icon(
-                        Icons.keyboard_arrow_up_rounded,
-                        color: Colors.white.withOpacity(0.8),
-                        size: 30,
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "Başlamak için yukarı kaydır",
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                          letterSpacing: 1,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Sadece en altta gösterge ikonu ve yazısı
+                    Container(
+                      height: 150,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.8),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 40),
-                    ],
-                  ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            color: Colors.white.withOpacity(0.8),
+                            size: 30,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            "Başlamak için yukarı kaydır",
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
 
-          // 4. KATMAN: Animasyonlu Giriş Paneli
+          // 5. KATMAN: Animasyonlu Giriş Paneli
           AnimatedPositioned(
             duration: const Duration(milliseconds: 500),
             curve: Curves.easeOutCubic,
@@ -164,7 +175,9 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
             right: 0,
             height: loginPanelHeight,
             child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
               onVerticalDragUpdate: (details) {
+                // Panelin herhangi bir yerinden aşağı sürükleyince kapanır
                 if (details.primaryDelta! > 5) {
                   setState(() {
                     _isLoginPanelVisible = false;
@@ -206,7 +219,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
                     Expanded(
                       child: _isEmailFormVisible
                           ? _buildEmailSignUpForm()
@@ -303,8 +315,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               ],
             ),
             const SizedBox(height: 20),
-
-            // --- E-Posta Input ---
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
@@ -327,8 +337,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               },
             ),
             const SizedBox(height: 15),
-
-            // --- Şifre Input ---
             TextFormField(
               controller: _passwordController,
               obscureText: true,
@@ -351,8 +359,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               },
             ),
             const SizedBox(height: 20),
-
-            // Checkbox ve Şartlar
             InkWell(
               onTap: () => _openTermsModal(),
               borderRadius: BorderRadius.circular(8),
@@ -410,22 +416,24 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // --- DEĞİŞİKLİK BURADA: KAYIT BUTONU ---
             SizedBox(
               height: 50,
               child: ElevatedButton(
                 onPressed: _isTermsAccepted
-                    ? () {
+                    ? () async {
                         if (_formKey.currentState!.validate()) {
-                          // 2. EKLEME: Navigasyon Kodu
-                          // pushReplacement: Geri dönülemeyecek şekilde yeni sayfayı açar
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const MainHealthScreen(),
-                            ),
-                          );
+                          // Giriş yapıldı olarak işaretle
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('is_logged_in', true);
+
+                          if (context.mounted) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MainHealthScreen(),
+                              ),
+                            );
+                          }
                         }
                       }
                     : null,
@@ -453,7 +461,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
     );
   }
 
-  // Modalı açan fonksiyon
   Future<void> _openTermsModal() async {
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -527,7 +534,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
   }
 }
 
-// Modal Ekranı (Değişmedi)
+// --- ŞARTLAR VE KOŞULLAR MODALİ ---
 class TermsAndConditionsModal extends StatefulWidget {
   const TermsAndConditionsModal({super.key});
 
@@ -682,9 +689,7 @@ class _TermsAndConditionsModalState extends State<TermsAndConditionsModal> {
                       ? "OKUDUM VE KABUL EDİYORUM"
                       : "SONUNA KADAR KAYDIRIN",
                   style: TextStyle(
-                    color: _isScrolledToBottom
-                        ? Colors.white
-                        : Colors.grey[500],
+                    color: _isScrolledToBottom ? Colors.white : Colors.grey[500],
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
