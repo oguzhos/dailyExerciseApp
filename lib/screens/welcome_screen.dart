@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- EKLENDİ
+import 'package:cloud_firestore/cloud_firestore.dart'; // <--- EKLENDİ
+import 'package:google_sign_in/google_sign_in.dart' as g_auth; // <--- EKLENDİ
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart'; // <--- EKLENDİ
 import 'home_screen.dart';
 
 // --- ANA EKRAN (WELCOME SCREEN) ---
@@ -15,22 +19,190 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
   bool _isEmailFormVisible = false;
   bool _isTermsAccepted = false;
 
+  // <--- EKLENDİ: Firebase ve Backend Değişkenleri
+  bool _isLoading = false;
+  bool _isLoginMode = true;
+
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _firstNameController = TextEditingController(); // <--- EKLENDİ
+  final _lastNameController = TextEditingController(); // <--- EKLENDİ
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _firstNameController.dispose(); // <--- EKLENDİ
+    _lastNameController.dispose(); // <--- EKLENDİ
     super.dispose();
+  }
+
+  // --- E-Posta ile Giriş veya Kayıt İşlemi ---
+  Future<void> _processEmailAuth() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (!_isLoginMode && !_isTermsAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Lütfen kullanım şartlarını kabul edin."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
+
+      if (_isLoginMode) {
+        // --- GİRİŞ YAP ---
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } else {
+        // --- YENİ KAYIT OL ---
+        UserCredential userCredential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(email: email, password: password);
+
+        String uid = userCredential.user!.uid;
+
+        // Firestore'a kullanıcı bilgilerini kaydet
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'firstName': _firstNameController.text.trim(),
+          'lastName': _lastNameController.text.trim(),
+          'email': email,
+          'currentStreak': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Arkadaşının eklediği SharedPreferences kaydı (Giriş yapıldı olarak işaretle)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_logged_in', true);
+
+      _navigateToHome();
+    } on FirebaseAuthException catch (e) {
+      _showError(e.code);
+    } catch (e) {
+      _showError("beklenmedik-hata");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- Google ile Giriş İşlemi (V7) ---
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      await g_auth.GoogleSignIn.instance.initialize();
+
+      final g_auth.GoogleSignInAccount? googleUser = await g_auth
+          .GoogleSignIn
+          .instance
+          .authenticate();
+
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final g_auth.GoogleSignInAuthentication googleAuth =
+          googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Arkadaşının eklediği SharedPreferences kaydı
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_logged_in', true);
+
+      _navigateToHome();
+    } catch (e) {
+      _showError("google-hata");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- Facebook ile Giriş İşlemi ---
+  Future<void> _signInWithFacebook() async {
+    setState(() => _isLoading = true);
+    try {
+      final LoginResult result = await FacebookAuth.instance.login();
+      if (result.status == LoginStatus.success) {
+        final credential = FacebookAuthProvider.credential(
+          result.accessToken!.tokenString,
+        );
+        await FirebaseAuth.instance.signInWithCredential(credential);
+
+        // Arkadaşının eklediği SharedPreferences kaydı
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('is_logged_in', true);
+
+        _navigateToHome();
+      } else if (result.status == LoginStatus.cancelled) {
+        // İptal edildi
+      } else {
+        _showError("facebook-hata");
+      }
+    } catch (e) {
+      _showError("facebook-hata");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _navigateToHome() {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainHealthScreen()),
+      );
+    }
+  }
+
+  void _showError(String errorCode) {
+    if (!mounted) return;
+    String errorMessage = "Bir hata oluştu. Lütfen tekrar deneyin.";
+
+    if (errorCode == 'user-not-found')
+      errorMessage = "Bu e-posta ile kayıtlı kullanıcı bulunamadı.";
+    else if (errorCode == 'wrong-password' || errorCode == 'invalid-credential')
+      errorMessage = "Hatalı şifre veya e-posta girdiniz.";
+    else if (errorCode == 'email-already-in-use')
+      errorMessage = "Bu e-posta adresi zaten kullanımda.";
+    else if (errorCode == 'google-hata')
+      errorMessage = "Google ile giriş yapılamadı.";
+    else if (errorCode == 'facebook-hata')
+      errorMessage = "Facebook ile giriş yapılamadı.";
+    else if (errorCode == 'beklenmedik-hata')
+      errorMessage = "Sunucu bağlantı hatası oluştu.";
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
 
-    final double targetHeight = _isEmailFormVisible ? 0.60 : 0.35;
+    // <--- DİNAMİK YÜKSEKLİK: Kayıt modu açıksa formu uzat
+    final double targetHeight = _isEmailFormVisible
+        ? (_isLoginMode ? 0.55 : 0.70)
+        : 0.35;
     final double loginPanelHeight = screenHeight * targetHeight;
 
     return Scaffold(
@@ -39,7 +211,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
         fit: StackFit.expand,
         children: [
           // 1. KATMAN: Arkaplan Görseli
-          // Sabah güneşinde huzurlu bir orman/doğa görseli
           Image.network(
             'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1520&q=80',
             fit: BoxFit.cover,
@@ -69,7 +240,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
             ),
           ),
 
-          // 3. KATMAN: Ana Başlıklar (ORTALANMIŞ)
+          // 3. KATMAN: Ana Başlıklar (ORTALANMIŞ - Arkadaşının Tasarımı)
           AnimatedOpacity(
             duration: const Duration(milliseconds: 400),
             opacity: _isLoginPanelVisible ? 0.0 : 1.0,
@@ -80,11 +251,11 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               bottom: 150,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center, // ORTALANDI
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: const [
                   Text(
                     "Kendine İyi Bak.",
-                    textAlign: TextAlign.center, // ORTALANDI
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 40,
@@ -95,7 +266,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                   SizedBox(height: 15),
                   Text(
                     "Evinin huzurunda, bedeninle barışık,\ndaha sağlıklı bir yaşama adım at.",
-                    textAlign: TextAlign.center, // ORTALANDI
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 17,
@@ -107,13 +278,13 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
             ),
           ),
 
-          // 4. KATMAN: Kaydırma Göstergesi (Ekranın ALT YARISI — geniş alan)
+          // 4. KATMAN: Kaydırma Göstergesi (Ekranın ALT YARISI)
           if (!_isLoginPanelVisible)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              height: screenHeight * 0.5, // Ekranın yarısı kadar alan
+              height: screenHeight * 0.5,
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onVerticalDragUpdate: (details) {
@@ -126,7 +297,6 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // Sadece en altta gösterge ikonu ve yazısı
                     Container(
                       height: 150,
                       alignment: Alignment.center,
@@ -177,11 +347,14 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onVerticalDragUpdate: (details) {
-                // Panelin herhangi bir yerinden aşağı sürükleyince kapanır
                 if (details.primaryDelta! > 5) {
                   setState(() {
                     _isLoginPanelVisible = false;
                     _isEmailFormVisible = false;
+                    _firstNameController.clear();
+                    _lastNameController.clear();
+                    _emailController.clear();
+                    _passwordController.clear();
                     FocusScope.of(context).unfocus();
                   });
                 }
@@ -229,6 +402,15 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               ),
             ),
           ),
+
+          // <--- EKLENDİ: Yükleme Ekranı Overlay
+          if (_isLoading && !_isEmailFormVisible)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.teal),
+              ),
+            ),
         ],
       ),
     );
@@ -267,7 +449,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                 icon: Icons.g_mobiledata_rounded,
                 color: const Color(0xFFDB4437),
                 label: "Google",
-                onTap: () => _openTermsModal(),
+                onTap: _signInWithGoogle, // <--- Dinamik fonksiyon
               ),
             ),
             const SizedBox(width: 15),
@@ -276,7 +458,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                 icon: Icons.facebook,
                 color: const Color(0xFF4267B2),
                 label: "Facebook",
-                onTap: () => _openTermsModal(),
+                onTap: _signInWithFacebook, // <--- Dinamik fonksiyon
               ),
             ),
           ],
@@ -285,7 +467,7 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
     );
   }
 
-  // --- 2. GÖRÜNÜM: E-posta Kayıt Formu ---
+  // --- 2. GÖRÜNÜM: E-posta Kayıt/Giriş Formu ---
   Widget _buildEmailSignUpForm() {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
@@ -303,18 +485,75 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                   onPressed: () {
                     setState(() {
                       _isEmailFormVisible = false;
+                      _firstNameController.clear();
+                      _lastNameController.clear();
+                      _emailController.clear();
+                      _passwordController.clear();
                       FocusScope.of(context).unfocus();
                     });
                   },
                 ),
                 const SizedBox(width: 10),
-                const Text(
-                  "E-posta ile Kaydol",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  _isLoginMode
+                      ? "Giriş Yap"
+                      : "Kayıt Ol", // <--- Dinamik Başlık
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
+
+            // <--- EKLENDİ: Ad ve Soyad Alanları (Sadece Kayıt modunda görünür)
+            if (!_isLoginMode)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 15),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _firstNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.person_outline),
+                          labelText: "Ad",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 15,
+                          ),
+                        ),
+                        validator: (value) =>
+                            value == null || value.isEmpty ? 'Gerekli' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _lastNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.person_outline),
+                          labelText: "Soyad",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 15,
+                          ),
+                        ),
+                        validator: (value) =>
+                            value == null || value.isEmpty ? 'Gerekli' : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
@@ -359,83 +598,75 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
               },
             ),
             const SizedBox(height: 20),
-            InkWell(
-              onTap: () => _openTermsModal(),
-              borderRadius: BorderRadius.circular(8),
-              child: Row(
-                children: [
-                  SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: Checkbox(
-                      value: _isTermsAccepted,
-                      activeColor: Colors.teal,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      onChanged: (val) => _openTermsModal(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: RichText(
-                      text: TextSpan(
-                        text: "Kullanım Şartları",
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.underline,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: " ve ",
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              decoration: TextDecoration.none,
-                            ),
+
+            // <--- GÜNCELLENDİ: Sadece Kayıt Modundayken Şartlar Çıksın
+            if (!_isLoginMode)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: InkWell(
+                  onTap: () => _openTermsModal(),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: Checkbox(
+                          value: _isTermsAccepted,
+                          activeColor: Colors.teal,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          const TextSpan(
-                            text: "Gizlilik Politikası",
-                            style: TextStyle(
+                          onChanged: (val) => _openTermsModal(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            text: "Kullanım Şartları",
+                            style: const TextStyle(
                               color: Colors.blue,
+                              fontWeight: FontWeight.bold,
                               decoration: TextDecoration.underline,
                             ),
+                            children: [
+                              TextSpan(
+                                text: " ve ",
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: "Gizlilik Politikası",
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                              TextSpan(
+                                text: "'nı okudum ve kabul ediyorum.",
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
                           ),
-                          TextSpan(
-                            text: "'nı okudum ve kabul ediyorum.",
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
+
             SizedBox(
               height: 50,
               child: ElevatedButton(
-                onPressed: _isTermsAccepted
-                    ? () async {
-                        if (_formKey.currentState!.validate()) {
-                          // Giriş yapıldı olarak işaretle
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('is_logged_in', true);
-
-                          if (context.mounted) {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const MainHealthScreen(),
-                              ),
-                            );
-                          }
-                        }
-                      }
+                // Login modundaysa veya şartlar kabul edildiyse butonu aktif et
+                onPressed: (_isLoginMode || _isTermsAccepted) && !_isLoading
+                    ? _processEmailAuth
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal[600],
@@ -444,16 +675,47 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  "KAYDI TAMAMLA",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : Text(
+                        _isLoginMode ? "GİRİŞ YAP" : "KAYDI TAMAMLA", // Dinamik
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+
+            // <--- EKLENDİ: Giriş Yap / Kayıt Ol Geçiş Butonu
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isLoginMode = !_isLoginMode;
+                  _formKey.currentState?.reset();
+                  _firstNameController.clear();
+                  _lastNameController.clear();
+                });
+              },
+              child: Text(
+                _isLoginMode
+                    ? "Hesabın yok mu? Hemen kayıt ol."
+                    : "Zaten hesabın var mı? Giriş yap.",
+                style: const TextStyle(
+                  color: Colors.teal,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
+
             SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
           ],
         ),
@@ -689,7 +951,9 @@ class _TermsAndConditionsModalState extends State<TermsAndConditionsModal> {
                       ? "OKUDUM VE KABUL EDİYORUM"
                       : "SONUNA KADAR KAYDIRIN",
                   style: TextStyle(
-                    color: _isScrolledToBottom ? Colors.white : Colors.grey[500],
+                    color: _isScrolledToBottom
+                        ? Colors.white
+                        : Colors.grey[500],
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),

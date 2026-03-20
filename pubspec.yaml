@@ -11,9 +11,14 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  shared_preferences: ^2.3.2
+  shared_preferences: ^2.5.4
   camera: ^0.11.0                          # Kamera erişimi
   google_mlkit_pose_detection: ^0.12.0     # Pose analizi (namespace fix)
+  firebase_core: ^4.5.0
+  firebase_auth: ^6.2.0
+  cloud_firestore: ^6.1.3
+  google_sign_in: ^7.2.0
+  flutter_facebook_auth: ^7.1.6
 
 dev_dependencies:
   flutter_test:

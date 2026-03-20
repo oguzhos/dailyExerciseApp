@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // <--- EKLENDİ: Firebase Veritabanı
+import 'package:firebase_auth/firebase_auth.dart'; // <--- EKLENDİ: Firebase Kimlik Doğrulama
+import 'profile_screen.dart'; // <--- EKLENDİ: Profil Ekranı Yönlendirmesi
 import 'onboarding_screen.dart';
 import 'workout_detail_screen.dart';
 import 'history_screen.dart';
@@ -27,7 +30,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
   int _streakCount = 0;
   int _todayAccuracy = 0;
   int _missedDays = 0;
-  String _userName = ''; // Kullanıcı adı
+  String _userName = ''; // Lokal kullanıcı adı yedeği
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
 
   // Geçmiş veriden senaryoyu ve streak'i otomatik hesapla
   Future<void> _loadScenario() async {
+    // Not: Arkadaşının kurduğu yapıya dokunulmadı
     final history = await WorkoutHistoryService.getHistory();
     final prefs = await SharedPreferences.getInstance();
     final onboardingDone = prefs.getInt('user_scenario') ?? 0;
@@ -44,13 +48,21 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
 
     // Hiç onboarding yapılmamışsa → Senaryo 0
     if (onboardingDone == 0) {
-      setState(() { _userScenario = 0; _streakCount = 0; _userName = userName; });
+      setState(() {
+        _userScenario = 0;
+        _streakCount = 0;
+        _userName = userName;
+      });
       return;
     }
 
     // Hiç egzersiz yapılmamışsa → Senaryo 1 (onboarding bitti ama egzersiz yok)
     if (history.isEmpty) {
-      setState(() { _userScenario = 1; _streakCount = 0; _userName = userName; });
+      setState(() {
+        _userScenario = 1;
+        _streakCount = 0;
+        _userName = userName;
+      });
       return;
     }
 
@@ -132,26 +144,70 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
-              style: TextStyle(
-                color: AppColors.textDark,
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
+            // <--- DEĞİŞTİRİLDİ: Statik isim yerine Firebase'den dinamik isim çekiyoruz
+            FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser?.uid)
+                  .get(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Text(
+                    "Merhaba, ...",
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  );
+                }
+
+                if (snapshot.hasData && snapshot.data!.exists) {
+                  String firstName = snapshot.data!['firstName'] ?? "Yolcu";
+                  return Text(
+                    "Merhaba, $firstName",
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  );
+                }
+
+                // Hata veya veri yoksa arkadaşının lokal _userName'ini yedek olarak kullanıyoruz
+                return Text(
+                  _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                  ),
+                );
+              },
             ),
-            Text(
+            const Text(
               "Bugün kendini nasıl hissediyorsun?",
               style: TextStyle(color: Colors.grey, fontSize: 14),
             ),
           ],
         ),
         actions: [
+          // <--- DEĞİŞTİRİLDİ: Sadece resim yerine tıklanabilir ve Profil Sayfasına giden buton yapıldı
           Padding(
-            padding: const EdgeInsets.only(right: 20.0),
-            child: CircleAvatar(
-              backgroundColor: AppColors.lightGreen.withOpacity(0.3),
-              child: const Icon(Icons.person, color: AppColors.primaryGreen),
+            padding: const EdgeInsets.only(right: 10.0),
+            child: IconButton(
+              icon: CircleAvatar(
+                backgroundColor: AppColors.lightGreen.withOpacity(0.3),
+                child: const Icon(Icons.person, color: AppColors.primaryGreen),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -162,8 +218,8 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
             child: _selectedIndex == 1
                 ? _buildHomeContent()
                 : _selectedIndex == 0
-                    ? const WorkoutDetailScreen()
-                    : HistoryScreen(key: ValueKey(_selectedIndex)),
+                ? const WorkoutDetailScreen()
+                : HistoryScreen(key: ValueKey(_selectedIndex)),
           ),
         ],
       ),
@@ -234,8 +290,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                       children: [
                         Icon(
                           Icons.local_fire_department_rounded,
-                          color:
-                              _streakCount > 0 ? Colors.orange : Colors.grey,
+                          color: _streakCount > 0 ? Colors.orange : Colors.grey,
                           size: 28,
                         ),
                         const SizedBox(width: 8),
@@ -252,7 +307,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                   ],
                 ),
                 CircularProgressIndicator(
-                  value: _streakCount > 0 ? (_streakCount / 7).clamp(0.0, 1.0) : 0.0,
+                  value: _streakCount > 0
+                      ? (_streakCount / 7).clamp(0.0, 1.0)
+                      : 0.0,
                   backgroundColor: AppColors.cardBeige,
                   color: AppColors.primaryGreen,
                 ),
@@ -346,12 +403,10 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 10)
-                ],
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
               ),
               child: const Icon(
                 Icons.timer_outlined,
@@ -421,11 +476,19 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_rounded, color: AppColors.primaryGreen, size: 80),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.primaryGreen,
+              size: 80,
+            ),
             const SizedBox(height: 20),
             const Text(
               "Harikasın!",
-              style: TextStyle(color: AppColors.textDark, fontSize: 26, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 10),
             const Text(
@@ -438,12 +501,20 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("Doğruluk Oranı:", style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    "Doğruluk Oranı:",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     "%$_todayAccuracy",
@@ -516,7 +587,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const WorkoutDetailScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const WorkoutDetailScreen(),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -553,7 +626,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
     bool isSelected = _selectedIndex == index;
     return GestureDetector(
       onTap: () {
-        setState(() { _selectedIndex = index; });
+        setState(() {
+          _selectedIndex = index;
+        });
         // Ana sayfaya geçince senaryoyu yenile
         if (index == 1) _loadScenario();
       },
@@ -573,8 +648,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
           children: [
             Icon(
               icon,
-              color:
-                  isSelected ? AppColors.primaryGreen : Colors.grey[400],
+              color: isSelected ? AppColors.primaryGreen : Colors.grey[400],
               size: 26,
             ),
             if (isSelected) ...[
@@ -593,5 +667,4 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       ),
     );
   }
-
 }
