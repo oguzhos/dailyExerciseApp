@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // <--- EKLENDİ
 import 'package:cloud_firestore/cloud_firestore.dart'; // <--- EKLENDİ
-import 'package:google_sign_in/google_sign_in.dart' as g_auth; // <--- EKLENDİ
+import 'package:google_sign_in/google_sign_in.dart'; // <--- EKLENDİ
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart'; // <--- EKLENDİ
 import 'home_screen.dart';
 
@@ -97,38 +97,75 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
 
   // --- Google ile Giriş İşlemi (V7) ---
   Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true);
     try {
-      await g_auth.GoogleSignIn.instance.initialize();
-
-      final g_auth.GoogleSignInAccount? googleUser = await g_auth
-          .GoogleSignIn
-          .instance
+      // 1. Google Giriş Akışını Başlat (V7 sürümü için instance üzerinden)
+      await GoogleSignIn.instance.initialize();
+      final GoogleSignInAccount? googleUser = await GoogleSignIn.instance
           .authenticate();
 
-      if (googleUser == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
+      if (googleUser == null) return; // Kullanıcı vazgeçerse çık
 
-      final g_auth.GoogleSignInAuthentication googleAuth =
-          googleUser.authentication;
+      // 2. Google'dan Kimlik Bilgilerini Al
+      // NOT: Yeni sürümde authentication artık bir Future değil, direkt erişiliyor.
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
+      // Firebase için gerekli olan idToken'ı kullanıyoruz
+      final AuthCredential credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      // 3. Firebase ile Giriş Yap
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithCredential(credential);
+      final User? user = userCredential.user;
 
-      // Arkadaşının eklediği SharedPreferences kaydı
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('is_logged_in', true);
+      if (user != null) {
+        // 4. Firestore'da kullanıcı dökümanı var mı kontrol et
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
 
-      _navigateToHome();
+        if (!userDoc.exists) {
+          // İlk kez geliyorsa Google bilgilerini Firestore'a kaydet
+          List<String> nameParts = (user.displayName ?? "Değerli Kullanıcı")
+              .split(" ");
+          String firstName = nameParts.first;
+          String lastName = nameParts.length > 1
+              ? nameParts.sublist(1).join(" ")
+              : "";
+
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'firstName': firstName,
+                'lastName': lastName,
+                'email': user.email,
+                'createdAt': FieldValue.serverTimestamp(),
+                'authType': 'google',
+              });
+        }
+
+        // 5. SharedPreferences kaydı (Giriş durumu takibi için)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('is_logged_in', true);
+
+        // 6. Ana Sayfaya Yönlendir
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainHealthScreen()),
+          );
+        }
+      }
     } catch (e) {
-      _showError("google-hata");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      print("Google Giriş Hatası: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Giriş yapılamadı: $e")));
+      }
     }
   }
 

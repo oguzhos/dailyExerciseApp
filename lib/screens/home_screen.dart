@@ -40,7 +40,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
 
   // Geçmiş veriden senaryoyu ve streak'i otomatik hesapla
   Future<void> _loadScenario() async {
-    // Not: Arkadaşının kurduğu yapıya dokunulmadı
     final history = await WorkoutHistoryService.getHistory();
     final prefs = await SharedPreferences.getInstance();
     final onboardingDone = prefs.getInt('user_scenario') ?? 0;
@@ -132,6 +131,16 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       _missedDays = missedDays;
       _userName = userName;
     });
+
+    // <--- YENİ EKLENEN KISIM: Canlı hesaplanan seriyi Firebase'e de eşitle
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({'currentStreak': streakCount})
+          .catchError((error) => debugPrint("Streak güncellenemedi: $error"));
+    }
   }
 
   @override
@@ -144,7 +153,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // <--- DEĞİŞTİRİLDİ: Statik isim yerine Firebase'den dinamik isim çekiyoruz
             FutureBuilder<DocumentSnapshot>(
               future: FirebaseFirestore.instance
                   .collection('users')
@@ -174,7 +182,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                   );
                 }
 
-                // Hata veya veri yoksa arkadaşının lokal _userName'ini yedek olarak kullanıyoruz
                 return Text(
                   _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
                   style: const TextStyle(
@@ -192,7 +199,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
           ],
         ),
         actions: [
-          // <--- DEĞİŞTİRİLDİ: Sadece resim yerine tıklanabilir ve Profil Sayfasına giden buton yapıldı
           Padding(
             padding: const EdgeInsets.only(right: 10.0),
             child: IconButton(
@@ -323,7 +329,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
   }
 
   Widget _buildDynamicStatusCard() {
-    // SENARYO 0: İLK KEZ GİRİŞ
     if (_userScenario == 0) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -366,7 +371,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                     builder: (context) => const OnboardingScreen(),
                   ),
                 );
-                // Onboarding'den dönünce senaryo güncelle
                 _loadScenario();
               },
               style: ElevatedButton.styleFrom(
@@ -390,7 +394,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 1: GÜNLÜK EGZERSİZ HENÜZ YAPILMADI
     if (_userScenario == 1) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -457,7 +460,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 2: GÜNLÜK EGZERSİZ BİTTİ
     if (_userScenario == 2) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -537,7 +539,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 3: STREAK BOZULDU
     if (_userScenario == 3) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -629,7 +630,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         setState(() {
           _selectedIndex = index;
         });
-        // Ana sayfaya geçince senaryoyu yenile
         if (index == 1) _loadScenario();
       },
       child: AnimatedContainer(
