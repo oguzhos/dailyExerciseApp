@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'home_screen.dart';
 
 // Renk paleti (home_screen.dart ile uyumlu)
 class _Colors {
@@ -19,13 +20,13 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  // Hangi adımda olduğumuzu takip eder
-  // 0: Ana seçim (2 büyük buton)
-  // 1a: Doktor kodu girişi
-  // 1b: Spor kategorisi seçimi
-  // 2b: "Sen öner" serbest metin
-  // 3b: Sahte AI önerileri
-  String _step = 'main';
+  // 'name': İsim girişi (YENİ - ilk adım)
+  // 'main': Ana seçim (2 büyük buton)
+  // 'doctor': Doktor kodu girişi
+  // 'sport': Spor kategorisi seçimi
+  // 'suggest': "Sen öner" serbest metin
+  // 'result': Sahte AI önerileri
+  String _step = 'name'; // İlk adım artık isim
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +50,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildStep() {
     switch (_step) {
+      case 'name':
+        return _NameScreen(
+          key: const ValueKey('name'),
+          onNext: () => setState(() => _step = 'main'),
+        );
       case 'main':
         return _MainSelection(
           key: const ValueKey('main'),
@@ -80,6 +86,134 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       default:
         return const SizedBox();
     }
+  }
+}
+
+// --- ADIM 0: İSİM GİRİŞİ ---
+class _NameScreen extends StatefulWidget {
+  final VoidCallback onNext;
+
+  const _NameScreen({super.key, required this.onNext});
+
+  @override
+  State<_NameScreen> createState() => _NameScreenState();
+}
+
+class _NameScreenState extends State<_NameScreen> {
+  final _controller = TextEditingController();
+  bool _isValid = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(28.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Spacer(),
+          // İkon
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: _Colors.card,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Icon(Icons.waving_hand_rounded,
+                color: _Colors.primaryGreen, size: 40),
+          ),
+          const SizedBox(height: 28),
+          const Text(
+            "Merhaba!\nSenin adın ne?",
+            style: TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.bold,
+              color: _Colors.textDark,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Sana nasıl hitap edelim?",
+            style: TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+          const SizedBox(height: 40),
+
+          // İsim input
+          TextField(
+            controller: _controller,
+            textCapitalization: TextCapitalization.words,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: _Colors.textDark,
+            ),
+            decoration: InputDecoration(
+              hintText: "Adını yaz...",
+              hintStyle: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 22,
+                fontWeight: FontWeight.normal,
+              ),
+              filled: true,
+              fillColor: _Colors.card,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(
+                    color: _Colors.primaryGreen, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20, vertical: 18),
+            ),
+            onChanged: (val) {
+              setState(() => _isValid = val.trim().length >= 2);
+            },
+          ),
+          const Spacer(),
+
+          // Devam butonu
+          SizedBox(
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _isValid
+                  ? () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString(
+                          'user_name', _controller.text.trim());
+                      widget.onNext();
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _Colors.primaryGreen,
+                disabledBackgroundColor: Colors.grey[300],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text(
+                "DEVAM ET",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
   }
 }
 

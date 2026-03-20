@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.3.2
+  camera: ^0.11.0                          # Kamera erişimi
+  google_mlkit_pose_detection: ^0.12.0     # Pose analizi (namespace fix)
 
 dev_dependencies:
   flutter_test:
