@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'profile_screen.dart';
 import 'onboarding_screen.dart';
 import 'workout_detail_screen.dart';
 import 'history_screen.dart';
@@ -27,7 +30,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
   int _streakCount = 0;
   int _todayAccuracy = 0;
   int _missedDays = 0;
-  String _userName = ''; // Kullanıcı adı
+  String _userName = ''; // Lokal kullanıcı adı yedeği
 
   @override
   void initState() {
@@ -35,50 +38,97 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
     _loadScenario();
   }
 
-  // Geçmiş veriden senaryoyu ve streak'i otomatik hesapla
+  // Geçmiş veriden senaryoyu ve streak'i GERÇEK bir şekilde hesapla
   Future<void> _loadScenario() async {
     final history = await WorkoutHistoryService.getHistory();
     final prefs = await SharedPreferences.getInstance();
-    final onboardingDone = prefs.getInt('user_scenario') ?? 0;
+    int onboardingDone = prefs.getInt('user_scenario') ?? 0;
     final userName = prefs.getString('user_name') ?? '';
 
-    // Hiç onboarding yapılmamışsa → Senaryo 0
+    // --- YENİ EKLENEN: CİHAZ SIFIRLANMIŞSA BULUTTAN KURTARMA OPERASYONU ---
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && onboardingDone == 0) {
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (userDoc.exists && userDoc.data()?['onboardingDone'] == true) {
+          // Kullanıcı önceden onboarding yapmış, bilgileri cihaza geri yükle!
+          final data = userDoc.data()!;
+          onboardingDone = 1; // Başlangıç adımını atla
+          await prefs.setInt('user_scenario', 1);
+          await prefs.setString(
+            'program_type',
+            data['program_type'] ?? 'sport',
+          );
+          if (data['doctor_code'] != null)
+            await prefs.setString('doctor_code', data['doctor_code']);
+          if (data['sport_category'] != null)
+            await prefs.setString('sport_category', data['sport_category']);
+        }
+      } catch (e) {
+        debugPrint("Buluttan onboarding verisi çekilemedi: $e");
+      }
+    }
+    // ----------------------------------------------------------------------
+
+    // Hiç onboarding yapılmamışsa
     if (onboardingDone == 0) {
-      setState(() { _userScenario = 0; _streakCount = 0; _userName = userName; });
+      setState(() {
+        _userScenario = 0;
+        _streakCount = 0;
+        _userName = userName;
+      });
       return;
     }
 
-    // Hiç egzersiz yapılmamışsa → Senaryo 1 (onboarding bitti ama egzersiz yok)
+    // Hiç egzersiz yapılmamışsa
     if (history.isEmpty) {
-      setState(() { _userScenario = 1; _streakCount = 0; _userName = userName; });
+      setState(() {
+        _userScenario = 1;
+        _streakCount = 0;
+        _userName = userName;
+      });
       return;
     }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
 
-    // Bugün egzersiz yapıldı mı?
-    final todayWorkout = history.any((h) {
-      final d = DateTime(h.date.year, h.date.month, h.date.day);
-      return d == today;
-    });
+    // 1. Tüm antrenman tarihlerini benzersiz (unique) gün olarak al ve sırala
+    final historyDates = history
+        .map((h) => DateTime(h.date.year, h.date.month, h.date.day))
+        .toSet()
+        .toList();
+    historyDates.sort((a, b) => b.compareTo(a)); // En yeni tarih en başta
 
-    // Son 7 günde kaç gün egzersiz yapıldı?
-    int daysWithWorkout = 0;
-    for (int i = 0; i < 7; i++) {
-      final day = today.subtract(Duration(days: i));
-      final hasWorkout = history.any((h) {
-        final d = DateTime(h.date.year, h.date.month, h.date.day);
-        return d == day;
-      });
-      if (hasWorkout) daysWithWorkout++;
+    final todayWorkout = historyDates.contains(today);
+    final yesterdayWorkout = historyDates.contains(yesterday);
+
+    // 2. GERÇEK STREAK (SERİ) HESAPLAMASI
+    int streakCount = 0;
+    if (todayWorkout || yesterdayWorkout) {
+      // Eğer bugün veya dün antrenman varsa seri devam ediyordur, kesintisiz günleri geriye doğru say
+      DateTime checkDate = todayWorkout ? today : yesterday;
+      while (historyDates.contains(checkDate)) {
+        streakCount++;
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      }
+    } else {
+      // Dün de bugün de antrenman yoksa seri KESİNLİKLE kopmuştur
+      streakCount = 0;
     }
 
-    // Streak: son 7 günde 6+ gün egzersiz yapıldıysa streak var
-    final hasStreak = daysWithWorkout >= 6;
-    final streakCount = daysWithWorkout;
+    // 3. KAÇ GÜN KAÇIRILDI HESAPLAMASI (Matematiksel Fark)
+    int missedDays = 0;
+    if (historyDates.isNotEmpty && !todayWorkout) {
+      final lastWorkoutDate = historyDates.first;
+      missedDays = today.difference(lastWorkoutDate).inDays;
+    }
 
-    // Bugünkü doğruluk oranını bul
+    // 4. BUGÜNKÜ DOĞRULUK ORANI
     int todayAccuracy = 0;
     if (todayWorkout) {
       final todayWorkouts = history.where((h) {
@@ -90,27 +140,16 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       }
     }
 
-    // Kaç gündür yapılmadı?
-    int missedDays = 0;
-    if (!todayWorkout) {
-      for (int i = 1; i <= 30; i++) {
-        final day = today.subtract(Duration(days: i));
-        final hasWorkout = history.any((h) {
-          final d = DateTime(h.date.year, h.date.month, h.date.day);
-          return d == day;
-        });
-        if (hasWorkout) break;
-        missedDays++;
-      }
-    }
-
+    // 5. SENARYO BELİRLEME
     int scenario;
     if (todayWorkout) {
-      scenario = 2;
-    } else if (!hasStreak && daysWithWorkout < 4) {
-      scenario = 3;
+      scenario = 2; // Bugün antrenman yapılmış -> "Harikasın" ekranı
+    } else if (streakCount == 0 && missedDays > 1) {
+      scenario =
+          3; // Seri kopmuş ve üzerinden 1 günden fazla geçmiş -> "Özledik" ekranı
     } else {
-      scenario = 1;
+      scenario =
+          1; // Bugün antrenman yapılmamış ama seri henüz kopmamış (dün yapmış) -> "Günün Hedefi"
     }
 
     setState(() {
@@ -120,6 +159,15 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       _missedDays = missedDays;
       _userName = userName;
     });
+
+    // 6. FIREBASE'İ GÜNCELLE
+    if (user != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({'currentStreak': streakCount})
+          .catchError((error) => debugPrint("Streak güncellenemedi: $error"));
+    }
   }
 
   @override
@@ -132,15 +180,46 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
-              style: TextStyle(
-                color: AppColors.textDark,
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
+            FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser?.uid)
+                  .get(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Text(
+                    "Merhaba, ...",
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  );
+                }
+
+                if (snapshot.hasData && snapshot.data!.exists) {
+                  String firstName = snapshot.data!['firstName'] ?? "Yolcu";
+                  return Text(
+                    "Merhaba, $firstName",
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  );
+                }
+
+                return Text(
+                  _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                  ),
+                );
+              },
             ),
-            Text(
+            const Text(
               "Bugün kendini nasıl hissediyorsun?",
               style: TextStyle(color: Colors.grey, fontSize: 14),
             ),
@@ -148,10 +227,20 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 20.0),
-            child: CircleAvatar(
-              backgroundColor: AppColors.lightGreen.withOpacity(0.3),
-              child: const Icon(Icons.person, color: AppColors.primaryGreen),
+            padding: const EdgeInsets.only(right: 10.0),
+            child: IconButton(
+              icon: CircleAvatar(
+                backgroundColor: AppColors.lightGreen.withOpacity(0.3),
+                child: const Icon(Icons.person, color: AppColors.primaryGreen),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -162,8 +251,8 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
             child: _selectedIndex == 1
                 ? _buildHomeContent()
                 : _selectedIndex == 0
-                    ? const WorkoutDetailScreen()
-                    : HistoryScreen(key: ValueKey(_selectedIndex)),
+                ? const WorkoutDetailScreen()
+                : HistoryScreen(key: ValueKey(_selectedIndex)),
           ),
         ],
       ),
@@ -234,8 +323,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                       children: [
                         Icon(
                           Icons.local_fire_department_rounded,
-                          color:
-                              _streakCount > 0 ? Colors.orange : Colors.grey,
+                          color: _streakCount > 0 ? Colors.orange : Colors.grey,
                           size: 28,
                         ),
                         const SizedBox(width: 8),
@@ -252,7 +340,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                   ],
                 ),
                 CircularProgressIndicator(
-                  value: _streakCount > 0 ? (_streakCount / 7).clamp(0.0, 1.0) : 0.0,
+                  value: _streakCount > 0
+                      ? (_streakCount / 7).clamp(0.0, 1.0)
+                      : 0.0,
                   backgroundColor: AppColors.cardBeige,
                   color: AppColors.primaryGreen,
                 ),
@@ -266,7 +356,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
   }
 
   Widget _buildDynamicStatusCard() {
-    // SENARYO 0: İLK KEZ GİRİŞ
     if (_userScenario == 0) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -309,7 +398,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
                     builder: (context) => const OnboardingScreen(),
                   ),
                 );
-                // Onboarding'den dönünce senaryo güncelle
                 _loadScenario();
               },
               style: ElevatedButton.styleFrom(
@@ -333,7 +421,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 1: GÜNLÜK EGZERSİZ HENÜZ YAPILMADI
     if (_userScenario == 1) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -346,12 +433,10 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 10)
-                ],
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
               ),
               child: const Icon(
                 Icons.timer_outlined,
@@ -402,7 +487,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 2: GÜNLÜK EGZERSİZ BİTTİ
     if (_userScenario == 2) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -421,11 +505,19 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_rounded, color: AppColors.primaryGreen, size: 80),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.primaryGreen,
+              size: 80,
+            ),
             const SizedBox(height: 20),
             const Text(
               "Harikasın!",
-              style: TextStyle(color: AppColors.textDark, fontSize: 26, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 10),
             const Text(
@@ -438,12 +530,20 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("Doğruluk Oranı:", style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    "Doğruluk Oranı:",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     "%$_todayAccuracy",
@@ -466,7 +566,6 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       );
     }
 
-    // SENARYO 3: STREAK BOZULDU
     if (_userScenario == 3) {
       return Container(
         padding: const EdgeInsets.all(25),
@@ -516,7 +615,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const WorkoutDetailScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const WorkoutDetailScreen(),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -553,8 +654,9 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
     bool isSelected = _selectedIndex == index;
     return GestureDetector(
       onTap: () {
-        setState(() { _selectedIndex = index; });
-        // Ana sayfaya geçince senaryoyu yenile
+        setState(() {
+          _selectedIndex = index;
+        });
         if (index == 1) _loadScenario();
       },
       child: AnimatedContainer(
@@ -573,8 +675,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
           children: [
             Icon(
               icon,
-              color:
-                  isSelected ? AppColors.primaryGreen : Colors.grey[400],
+              color: isSelected ? AppColors.primaryGreen : Colors.grey[400],
               size: 26,
             ),
             if (isSelected) ...[
@@ -593,5 +694,4 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       ),
     );
   }
-
 }

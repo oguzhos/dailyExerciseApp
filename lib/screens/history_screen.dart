@@ -1,6 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 const Color _primaryGreen = Color(0xFF4A6849);
 const Color _backgroundBeige = Color(0xFFFDFCF4);
@@ -24,49 +24,90 @@ class WorkoutHistory {
     required this.totalReps,
   });
 
-  // JSON'a çevir (kaydetmek için)
-  Map<String, dynamic> toJson() => {
+  // Firestore'a kaydetmek için (Map'e çevir)
+  Map<String, dynamic> toMap() => {
     'programName': programName,
-    'date': date.toIso8601String(),
+    'date': Timestamp.fromDate(date), // Firestore Timestamp formatı
     'accuracyRate': accuracyRate,
     'cameraEnabled': cameraEnabled,
     'totalReps': totalReps,
   };
 
-  // JSON'dan oku
-  factory WorkoutHistory.fromJson(Map<String, dynamic> json) => WorkoutHistory(
-    programName: json['programName'] as String,
-    date: DateTime.parse(json['date'] as String),
-    accuracyRate: json['accuracyRate'] as int,
-    cameraEnabled: json['cameraEnabled'] as bool,
-    totalReps: json['totalReps'] as int,
+  // Firestore'dan okumak için
+  factory WorkoutHistory.fromMap(Map<String, dynamic> map) => WorkoutHistory(
+    programName: map['programName'] as String? ?? 'Egzersiz',
+    date: (map['date'] as Timestamp).toDate(),
+    accuracyRate: map['accuracyRate'] as int? ?? 0,
+    cameraEnabled: map['cameraEnabled'] as bool? ?? false,
+    totalReps: map['totalReps'] as int? ?? 0,
   );
 }
 
-// --- GEÇMİŞ KAYDETME/OKUMA SERVİSİ ---
+// --- FİREBASE GEÇMİŞ SERVİSİ ---
 class WorkoutHistoryService {
-  static const String _key = 'workout_history';
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Tüm geçmişi oku
+  static String? get _userId => _auth.currentUser?.uid;
+
+  // Tüm geçmişi oku (Firestore'dan)
   static Future<List<WorkoutHistory>> getHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_key) ?? [];
-    return raw.map((e) => WorkoutHistory.fromJson(jsonDecode(e))).toList()
-      ..sort((a, b) => b.date.compareTo(a.date)); // En yeni önce
+    if (_userId == null) return [];
+
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(_userId)
+          .collection('history')
+          .orderBy('date', descending: true)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => WorkoutHistory.fromMap(doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint("Geçmiş okunurken hata: $e");
+      return [];
+    }
   }
 
-  // Yeni egzersiz kaydet
+  // Yeni egzersiz kaydet (Firestore'a)
   static Future<void> saveWorkout(WorkoutHistory history) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_key) ?? [];
-    raw.add(jsonEncode(history.toJson()));
-    await prefs.setStringList(_key, raw);
+    if (_userId == null) return;
+
+    try {
+      await _db
+          .collection('users')
+          .doc(_userId)
+          .collection('history')
+          .add(history.toMap());
+
+      // Ayrıca ana user dokümanındaki "Son Egzersiz" tarihini de güncelleyelim (Streak için)
+      await _db.collection('users').doc(_userId).set({
+        'lastWorkoutDate': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Geçmiş kaydedilirken hata: $e");
+    }
   }
 
-  // Geçmişi temizle
+  // Geçmişi temizle (Firestore'daki history koleksiyonunu sil)
   static Future<void> clearHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_key);
+    if (_userId == null) return;
+
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(_userId)
+          .collection('history')
+          .get();
+
+      for (DocumentSnapshot doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      debugPrint("Geçmiş silinirken hata: $e");
+    }
   }
 }
 
@@ -151,8 +192,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
           IconButton(
             icon: const Icon(Icons.delete_outline, color: _textDark),
             onPressed: () async {
-              await WorkoutHistoryService.clearHistory();
-              _loadHistory();
+              // Silme işlemi için onay diyaloğu eklendi
+              bool? confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Geçmişi Sil"),
+                  content: const Text(
+                    "Tüm egzersiz geçmişiniz kalıcı olarak silinecek. Emin misiniz?",
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text("İptal"),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text(
+                        "Sil",
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirm == true) {
+                setState(() => _isLoading = true);
+                await WorkoutHistoryService.clearHistory();
+                _loadHistory();
+              }
             },
           ),
         ],

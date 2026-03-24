@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Renk paleti (home_screen.dart ile uyumlu)
 class _Colors {
@@ -20,13 +22,13 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  // 'name': İsim girişi (YENİ - ilk adım)
+  // İsim sorma adımı ('name') kaldırıldı. İlk adım artık 'main'
   // 'main': Ana seçim (2 büyük buton)
   // 'doctor': Doktor kodu girişi
   // 'sport': Spor kategorisi seçimi
   // 'suggest': "Sen öner" serbest metin
   // 'result': Sahte AI önerileri
-  String _step = 'name'; // İlk adım artık isim
+  String _step = 'main';
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +38,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 350),
           transitionBuilder: (child, animation) => SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                ),
             child: child,
           ),
           child: _buildStep(),
@@ -50,11 +52,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildStep() {
     switch (_step) {
-      case 'name':
-        return _NameScreen(
-          key: const ValueKey('name'),
-          onNext: () => setState(() => _step = 'main'),
-        );
       case 'main':
         return _MainSelection(
           key: const ValueKey('main'),
@@ -86,134 +83,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       default:
         return const SizedBox();
     }
-  }
-}
-
-// --- ADIM 0: İSİM GİRİŞİ ---
-class _NameScreen extends StatefulWidget {
-  final VoidCallback onNext;
-
-  const _NameScreen({super.key, required this.onNext});
-
-  @override
-  State<_NameScreen> createState() => _NameScreenState();
-}
-
-class _NameScreenState extends State<_NameScreen> {
-  final _controller = TextEditingController();
-  bool _isValid = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(28.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Spacer(),
-          // İkon
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: _Colors.card,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Icon(Icons.waving_hand_rounded,
-                color: _Colors.primaryGreen, size: 40),
-          ),
-          const SizedBox(height: 28),
-          const Text(
-            "Merhaba!\nSenin adın ne?",
-            style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
-              color: _Colors.textDark,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            "Sana nasıl hitap edelim?",
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-          const SizedBox(height: 40),
-
-          // İsim input
-          TextField(
-            controller: _controller,
-            textCapitalization: TextCapitalization.words,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: _Colors.textDark,
-            ),
-            decoration: InputDecoration(
-              hintText: "Adını yaz...",
-              hintStyle: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 22,
-                fontWeight: FontWeight.normal,
-              ),
-              filled: true,
-              fillColor: _Colors.card,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                    color: _Colors.primaryGreen, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 18),
-            ),
-            onChanged: (val) {
-              setState(() => _isValid = val.trim().length >= 2);
-            },
-          ),
-          const Spacer(),
-
-          // Devam butonu
-          SizedBox(
-            height: 56,
-            child: ElevatedButton(
-              onPressed: _isValid
-                  ? () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString(
-                          'user_name', _controller.text.trim());
-                      widget.onNext();
-                    }
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _Colors.primaryGreen,
-                disabledBackgroundColor: Colors.grey[300],
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text(
-                "DEVAM ET",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
   }
 }
 
@@ -258,7 +127,8 @@ class _MainSelection extends StatelessWidget {
             iconColor: const Color(0xFF4A7FA5),
             iconBg: const Color(0xFFE8F4FD),
             title: "Yapmam gereken\nhareketler var",
-            subtitle: "Doktorumun verdiği egzersiz programını takip etmek istiyorum.",
+            subtitle:
+                "Doktorumun verdiği egzersiz programını takip etmek istiyorum.",
             onTap: onDoctor,
           ),
           const SizedBox(height: 20),
@@ -269,7 +139,8 @@ class _MainSelection extends StatelessWidget {
             iconColor: _Colors.primaryGreen,
             iconBg: const Color(0xFFE8F5E9),
             title: "Sağlığım için\nspor yapıyorum",
-            subtitle: "Kendi hedeflerim doğrultusunda egzersiz yapmak istiyorum.",
+            subtitle:
+                "Kendi hedeflerim doğrultusunda egzersiz yapmak istiyorum.",
             onTap: onSport,
           ),
           const Spacer(),
@@ -351,8 +222,11 @@ class _BigOptionCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                color: Colors.grey, size: 16),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.grey,
+              size: 16,
+            ),
           ],
         ),
       ),
@@ -399,12 +273,24 @@ class _DoctorCodeScreenState extends State<_DoctorCodeScreen> {
       await prefs.setInt('user_scenario', 1);
       await prefs.setString('program_type', 'doctor');
       await prefs.setString('doctor_code', code); // Kodu kaydediyoruz
+
+      // YENİ EKLENEN KISIM: Buluta Kaydet (Doktor)
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'onboardingDone': true,
+          'program_type': 'doctor',
+          'doctor_code': code,
+        }, SetOptions(merge: true));
+      }
+
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       setState(() {
         _isLoading = false;
-        _errorText = 'Geçersiz kod. Lütfen doktorunuzdan aldığınız kodu kontrol edin.';
+        _errorText =
+            'Geçersiz kod. Lütfen doktorunuzdan aldığınız kodu kontrol edin.';
       });
     }
   }
@@ -428,12 +314,19 @@ class _DoctorCodeScreenState extends State<_DoctorCodeScreen> {
             onTap: widget.onBack,
             child: const Row(
               children: [
-                Icon(Icons.arrow_back_ios_rounded,
-                    size: 18, color: _Colors.textDark),
+                Icon(
+                  Icons.arrow_back_ios_rounded,
+                  size: 18,
+                  color: _Colors.textDark,
+                ),
                 SizedBox(width: 4),
-                Text("Geri",
-                    style: TextStyle(
-                        color: _Colors.textDark, fontWeight: FontWeight.w500)),
+                Text(
+                  "Geri",
+                  style: TextStyle(
+                    color: _Colors.textDark,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -447,8 +340,11 @@ class _DoctorCodeScreenState extends State<_DoctorCodeScreen> {
               color: const Color(0xFFE8F4FD),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.medical_services_rounded,
-                color: Color(0xFF4A7FA5), size: 36),
+            child: const Icon(
+              Icons.medical_services_rounded,
+              color: Color(0xFF4A7FA5),
+              size: 36,
+            ),
           ),
           const SizedBox(height: 20),
 
@@ -495,7 +391,9 @@ class _DoctorCodeScreenState extends State<_DoctorCodeScreen> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide: const BorderSide(
-                    color: _Colors.primaryGreen, width: 2),
+                  color: _Colors.primaryGreen,
+                  width: 2,
+                ),
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 20),
             ),
@@ -607,13 +505,19 @@ class _SportCategoryScreenState extends State<_SportCategoryScreen> {
             onTap: widget.onBack,
             child: const Row(
               children: [
-                Icon(Icons.arrow_back_ios_rounded,
-                    size: 18, color: _Colors.textDark),
+                Icon(
+                  Icons.arrow_back_ios_rounded,
+                  size: 18,
+                  color: _Colors.textDark,
+                ),
                 SizedBox(width: 4),
-                Text("Geri",
-                    style: TextStyle(
-                        color: _Colors.textDark,
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  "Geri",
+                  style: TextStyle(
+                    color: _Colors.textDark,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -635,17 +539,19 @@ class _SportCategoryScreenState extends State<_SportCategoryScreen> {
           const SizedBox(height: 30),
 
           // Kategori listesi
-          ...(_categories.map((cat) => Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: _CategoryTile(
-                  icon: cat['icon'] as IconData,
-                  iconColor: cat['color'] as Color,
-                  iconBg: cat['bg'] as Color,
-                  title: cat['title'] as String,
-                  isSelected: _selected == cat['id'],
-                  onTap: () => setState(() => _selected = cat['id'] as String),
-                ),
-              ))),
+          ...(_categories.map(
+            (cat) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _CategoryTile(
+                icon: cat['icon'] as IconData,
+                iconColor: cat['color'] as Color,
+                iconBg: cat['bg'] as Color,
+                title: cat['title'] as String,
+                isSelected: _selected == cat['id'],
+                onTap: () => setState(() => _selected = cat['id'] as String),
+              ),
+            ),
+          )),
 
           const SizedBox(height: 10),
 
@@ -658,13 +564,18 @@ class _SportCategoryScreenState extends State<_SportCategoryScreen> {
                 color: _Colors.primaryGreen.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: _Colors.primaryGreen.withOpacity(0.3), width: 1.5),
+                  color: _Colors.primaryGreen.withOpacity(0.3),
+                  width: 1.5,
+                ),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.auto_awesome_rounded,
-                      color: _Colors.primaryGreen, size: 20),
+                  Icon(
+                    Icons.auto_awesome_rounded,
+                    color: _Colors.primaryGreen,
+                    size: 20,
+                  ),
                   SizedBox(width: 10),
                   Text(
                     "Bir fikrim yok, sen öner ✨",
@@ -691,7 +602,24 @@ class _SportCategoryScreenState extends State<_SportCategoryScreen> {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setInt('user_scenario', 1);
                       await prefs.setString('program_type', 'sport');
-                      await prefs.setString('sport_category', _selected!); // Kategoriyi kaydediyoruz
+                      await prefs.setString(
+                        'sport_category',
+                        _selected!,
+                      ); // Kategoriyi kaydediyoruz
+
+                      // YENİ EKLENEN KISIM: Buluta Kaydet (Spor)
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(user.uid)
+                            .set({
+                              'onboardingDone': true,
+                              'program_type': 'sport',
+                              'sport_category': _selected!,
+                            }, SetOptions(merge: true));
+                      }
+
                       if (!mounted) return;
                       Navigator.of(context).popUntil((route) => route.isFirst);
                     },
@@ -766,8 +694,7 @@ class _CategoryTile extends StatelessWidget {
               title,
               style: TextStyle(
                 fontSize: 16,
-                fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 color: _Colors.textDark,
               ),
             ),
@@ -775,8 +702,11 @@ class _CategoryTile extends StatelessWidget {
             AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
               opacity: isSelected ? 1.0 : 0.0,
-              child: Icon(Icons.check_circle_rounded,
-                  color: iconColor, size: 22),
+              child: Icon(
+                Icons.check_circle_rounded,
+                color: iconColor,
+                size: 22,
+              ),
             ),
           ],
         ),
@@ -832,20 +762,29 @@ class _SuggestScreenState extends State<_SuggestScreen> {
             onTap: widget.onBack,
             child: const Row(
               children: [
-                Icon(Icons.arrow_back_ios_rounded,
-                    size: 18, color: _Colors.textDark),
+                Icon(
+                  Icons.arrow_back_ios_rounded,
+                  size: 18,
+                  color: _Colors.textDark,
+                ),
                 SizedBox(width: 4),
-                Text("Geri",
-                    style: TextStyle(
-                        color: _Colors.textDark,
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  "Geri",
+                  style: TextStyle(
+                    color: _Colors.textDark,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 30),
 
-          const Icon(Icons.auto_awesome_rounded,
-              color: _Colors.primaryGreen, size: 40),
+          const Icon(
+            Icons.auto_awesome_rounded,
+            color: _Colors.primaryGreen,
+            size: 40,
+          ),
           const SizedBox(height: 16),
 
           const Text(
@@ -888,7 +827,9 @@ class _SuggestScreenState extends State<_SuggestScreen> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: const BorderSide(
-                      color: _Colors.primaryGreen, width: 2),
+                    color: _Colors.primaryGreen,
+                    width: 2,
+                  ),
                 ),
                 contentPadding: const EdgeInsets.all(20),
               ),
@@ -920,8 +861,10 @@ class _SuggestScreenState extends State<_SuggestScreen> {
                           ),
                         ),
                         SizedBox(width: 12),
-                        Text("Analiz ediliyor...",
-                            style: TextStyle(color: Colors.white)),
+                        Text(
+                          "Analiz ediliyor...",
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ],
                     )
                   : const Text(
@@ -987,13 +930,19 @@ class _SuggestionResultScreen extends StatelessWidget {
             onTap: onBack,
             child: const Row(
               children: [
-                Icon(Icons.arrow_back_ios_rounded,
-                    size: 18, color: _Colors.textDark),
+                Icon(
+                  Icons.arrow_back_ios_rounded,
+                  size: 18,
+                  color: _Colors.textDark,
+                ),
                 SizedBox(width: 4),
-                Text("Geri",
-                    style: TextStyle(
-                        color: _Colors.textDark,
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  "Geri",
+                  style: TextStyle(
+                    color: _Colors.textDark,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1015,62 +964,73 @@ class _SuggestionResultScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Öneri kartları
-          ...(_suggestions.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: _Colors.card, width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: (s['color'] as Color).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(s['icon'] as IconData,
-                            color: s['color'] as Color, size: 26),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s['title'] as String,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: _Colors.textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              s['desc'] as String,
-                              style: const TextStyle(
-                                  fontSize: 13, color: Colors.grey),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                _chip(s['duration'] as String,
-                                    Icons.timer_outlined),
-                                const SizedBox(width: 8),
-                                _chip(s['level'] as String,
-                                    Icons.bar_chart_rounded),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+          ...(_suggestions.map(
+            (s) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _Colors.card, width: 1.5),
                 ),
-              ))),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: (s['color'] as Color).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        s['icon'] as IconData,
+                        color: s['color'] as Color,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s['title'] as String,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: _Colors.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            s['desc'] as String,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _chip(
+                                s['duration'] as String,
+                                Icons.timer_outlined,
+                              ),
+                              const SizedBox(width: 8),
+                              _chip(
+                                s['level'] as String,
+                                Icons.bar_chart_rounded,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )),
 
           const Spacer(),
 
@@ -1082,6 +1042,19 @@ class _SuggestionResultScreen extends StatelessWidget {
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setInt('user_scenario', 1);
                 await prefs.setString('program_type', 'suggested');
+
+                // YENİ EKLENEN KISIM: Buluta Kaydet (Öneri Onaylama)
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({
+                        'onboardingDone': true,
+                        'program_type': 'suggested',
+                      }, SetOptions(merge: true));
+                }
+
                 if (!context.mounted) return;
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
@@ -1118,8 +1091,7 @@ class _SuggestionResultScreen extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: Colors.grey),
           const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
         ],
       ),
     );

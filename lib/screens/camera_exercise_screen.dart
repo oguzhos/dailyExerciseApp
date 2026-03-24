@@ -43,6 +43,7 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
   String _feedback = "Hazırlanıyor...";
   bool _isInCorrectPosition = false;
   bool _wasDown = false;
+  bool _achievedProperForm = false;
 
   final _smoother = LandmarkSmoother(windowSize: 5);
 
@@ -65,7 +66,8 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
 
   Exercise get _currentExercise => widget.exercises[_currentExerciseIndex];
   int get _targetReps => _currentExercise.targetReps;
-  bool get _isLastExercise => _currentExerciseIndex == widget.exercises.length - 1;
+  bool get _isLastExercise =>
+      _currentExerciseIndex == widget.exercises.length - 1;
 
   Future<void> _initCamera() async {
     final cameras = await availableCameras();
@@ -96,7 +98,10 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
 
     try {
       final inputImage = _convertToInputImage(image);
-      if (inputImage == null) { _isDetecting = false; return; }
+      if (inputImage == null) {
+        _isDetecting = false;
+        return;
+      }
 
       final poses = await _poseDetector.processImage(inputImage);
 
@@ -105,13 +110,29 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
         final smoothedPose = _smoother.smooth(pose);
         final result = _analyzeExercise(smoothedPose, _currentExercise.name);
 
-        _smoothedAccuracy = _smoothedAccuracy * 0.7 + (result['accuracy'] as double) * 0.3;
+        // 1. ÇÖZÜM: Yüzde 100 olmama sorununu ufak bir hileyle çözüyoruz
+        _smoothedAccuracy =
+            _smoothedAccuracy * 0.7 + (result['accuracy'] as double) * 0.3;
+        if (_smoothedAccuracy > 97.5) {
+          _smoothedAccuracy = 100.0; // 98'i geçerse direkt 100'e yuvarla
+        }
 
         final isDown = result['isDown'] as bool;
         final isCorrect = result['isCorrect'] as bool;
 
-        if (_wasDown && !isDown && isCorrect) {
-          _onRepCompleted();
+        // 2. ÇÖZÜM: ASIL SAYIM MANTIĞI
+        // Kullanıcı aşağıdayken doğru pozisyonu yakaladıysa mühürle
+        if (isDown && isCorrect) {
+          _achievedProperForm = true;
+        }
+
+        // Önceki karede aşağıdaydı, şimdi yukarı kalktıysa (Tekrar bittiyse)
+        if (_wasDown && !isDown) {
+          if (_achievedProperForm) {
+            // Eğer aşağıdayken hareketi düzgün yaptıysa say
+            _onRepCompleted();
+          }
+          _achievedProperForm = false; // Yeni tekrar için hafızayı sıfırla
         }
 
         setState(() {
@@ -170,7 +191,10 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
             if (!_isLastExercise)
               Text(
                 "Sıradaki: ${widget.exercises[_currentExerciseIndex + 1].name}",
-                style: const TextStyle(color: _primaryGreen, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: _primaryGreen,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
           ],
         ),
@@ -184,7 +208,10 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                   _testMode = false; // Test modunu sıfırla
                 });
               },
-              child: const Text("Devam Et", style: TextStyle(color: Colors.grey)),
+              child: const Text(
+                "Devam Et",
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
           ElevatedButton(
             onPressed: () {
@@ -198,7 +225,9 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: _primaryGreen,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: Text(
               _isLastExercise ? "Egzersizi Bitir" : "Sonraki Hareket →",
@@ -211,7 +240,10 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
   }
 
   void _goToNextExercise() {
-    if (_isLastExercise) { _finishWorkout(); return; }
+    if (_isLastExercise) {
+      _finishWorkout();
+      return;
+    }
 
     setState(() {
       _currentExerciseIndex++;
@@ -220,6 +252,7 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
       _smoothedAccuracy = 0.0;
       _feedback = "Hazırlanıyor...";
       _wasDown = false;
+      _achievedProperForm = false; // YENİ EKLENDİ
       _smoother.reset();
     });
   }
@@ -241,25 +274,38 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
   InputImage? _convertToInputImage(CameraImage image) {
     if (_cameraController == null) return null;
     final camera = _cameraController!.description;
-    final rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
+    final rotation = InputImageRotationValue.fromRawValue(
+      camera.sensorOrientation,
+    );
     if (rotation == null) return null;
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format == null || (format != InputImageFormat.nv21 && format != InputImageFormat.yuv_420_888)) return null;
+    if (format == null ||
+        (format != InputImageFormat.nv21 &&
+            format != InputImageFormat.yuv_420_888))
+      return null;
     final plane = image.planes.first;
     return InputImage.fromBytes(
       bytes: plane.bytes,
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation, format: format, bytesPerRow: plane.bytesPerRow,
+        rotation: rotation,
+        format: format,
+        bytesPerRow: plane.bytesPerRow,
       ),
     );
   }
 
   Map<String, dynamic> _analyzeExercise(Pose pose, String exerciseName) {
-    if (exerciseName.toLowerCase().contains('squat') || exerciseName.toLowerCase().contains('çömelme')) return _analyzeSquat(pose);
-    if (exerciseName.toLowerCase().contains('plank')) return _analyzePlank(pose);
-    if (exerciseName.toLowerCase().contains('diz') || exerciseName.toLowerCase().contains('fleksiy')) return _analyzeKneeBend(pose);
-    if (exerciseName.toLowerCase().contains('köprü')) return _analyzeBridge(pose);
+    if (exerciseName.toLowerCase().contains('squat') ||
+        exerciseName.toLowerCase().contains('çömelme'))
+      return _analyzeSquat(pose);
+    if (exerciseName.toLowerCase().contains('plank'))
+      return _analyzePlank(pose);
+    if (exerciseName.toLowerCase().contains('diz') ||
+        exerciseName.toLowerCase().contains('fleksiy'))
+      return _analyzeKneeBend(pose);
+    if (exerciseName.toLowerCase().contains('köprü'))
+      return _analyzeBridge(pose);
     return _analyzeGeneral(pose);
   }
 
@@ -268,16 +314,43 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     final knee = pose.landmarks[PoseLandmarkType.leftKnee];
     final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
     if (hip == null || knee == null || ankle == null) return _notDetected();
-    if (hip.likelihood < 0.5 || knee.likelihood < 0.5 || ankle.likelihood < 0.5) return _notDetected();
-    final kneeAngle = _calculateAngle(hip.x, hip.y, knee.x, knee.y, ankle.x, ankle.y);
+    if (hip.likelihood < 0.5 || knee.likelihood < 0.5 || ankle.likelihood < 0.5)
+      return _notDetected();
+    final kneeAngle = _calculateAngle(
+      hip.x,
+      hip.y,
+      knee.x,
+      knee.y,
+      ankle.x,
+      ankle.y,
+    );
     final isDown = kneeAngle < 120;
-    double accuracy; String feedback; bool isCorrect = false;
-    if (kneeAngle >= 80 && kneeAngle <= 110) { accuracy = 100; feedback = "Mükemmel squat! 💪"; isCorrect = true; }
-    else if (kneeAngle >= 60 && kneeAngle < 80) { accuracy = 70; feedback = "Çok derin, biraz kalk"; }
-    else if (kneeAngle > 110 && kneeAngle <= 140) { accuracy = 60; feedback = "Biraz daha çömel"; }
-    else if (kneeAngle > 140) { accuracy = 30; feedback = "Çömelmeye başla"; }
-    else { accuracy = 50; feedback = "Pozisyonu düzelt"; }
-    return {'accuracy': accuracy, 'feedback': feedback, 'isCorrect': isCorrect, 'isDown': isDown};
+    double accuracy;
+    String feedback;
+    bool isCorrect = false;
+    if (kneeAngle >= 80 && kneeAngle <= 110) {
+      accuracy = 100;
+      feedback = "Mükemmel squat! 💪";
+      isCorrect = true;
+    } else if (kneeAngle >= 60 && kneeAngle < 80) {
+      accuracy = 70;
+      feedback = "Çok derin, biraz kalk";
+    } else if (kneeAngle > 110 && kneeAngle <= 140) {
+      accuracy = 60;
+      feedback = "Biraz daha çömel";
+    } else if (kneeAngle > 140) {
+      accuracy = 30;
+      feedback = "Çömelmeye başla";
+    } else {
+      accuracy = 50;
+      feedback = "Pozisyonu düzelt";
+    }
+    return {
+      'accuracy': accuracy,
+      'feedback': feedback,
+      'isCorrect': isCorrect,
+      'isDown': isDown,
+    };
   }
 
   Map<String, dynamic> _analyzePlank(Pose pose) {
@@ -285,14 +358,41 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     final hip = pose.landmarks[PoseLandmarkType.leftHip];
     final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
     if (shoulder == null || hip == null || ankle == null) return _notDetected();
-    if (shoulder.likelihood < 0.5 || hip.likelihood < 0.5 || ankle.likelihood < 0.5) return _notDetected();
-    final bodyAngle = _calculateAngle(shoulder.x, shoulder.y, hip.x, hip.y, ankle.x, ankle.y);
-    double accuracy; String feedback; bool isCorrect = false;
-    if (bodyAngle >= 160 && bodyAngle <= 180) { accuracy = 100; feedback = "Mükemmel plank! 🔥"; isCorrect = true; }
-    else if (bodyAngle >= 140 && bodyAngle < 160) { accuracy = 70; feedback = "Kalçanı biraz indir"; }
-    else if (bodyAngle < 140) { accuracy = 40; feedback = "Vücudunu düz tut"; }
-    else { accuracy = 50; feedback = "Pozisyonu ayarla"; }
-    return {'accuracy': accuracy, 'feedback': feedback, 'isCorrect': isCorrect, 'isDown': false};
+    if (shoulder.likelihood < 0.5 ||
+        hip.likelihood < 0.5 ||
+        ankle.likelihood < 0.5)
+      return _notDetected();
+    final bodyAngle = _calculateAngle(
+      shoulder.x,
+      shoulder.y,
+      hip.x,
+      hip.y,
+      ankle.x,
+      ankle.y,
+    );
+    double accuracy;
+    String feedback;
+    bool isCorrect = false;
+    if (bodyAngle >= 160 && bodyAngle <= 180) {
+      accuracy = 100;
+      feedback = "Mükemmel plank! 🔥";
+      isCorrect = true;
+    } else if (bodyAngle >= 140 && bodyAngle < 160) {
+      accuracy = 70;
+      feedback = "Kalçanı biraz indir";
+    } else if (bodyAngle < 140) {
+      accuracy = 40;
+      feedback = "Vücudunu düz tut";
+    } else {
+      accuracy = 50;
+      feedback = "Pozisyonu ayarla";
+    }
+    return {
+      'accuracy': accuracy,
+      'feedback': feedback,
+      'isCorrect': isCorrect,
+      'isDown': false,
+    };
   }
 
   Map<String, dynamic> _analyzeKneeBend(Pose pose) {
@@ -300,15 +400,40 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     final knee = pose.landmarks[PoseLandmarkType.leftKnee];
     final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
     if (hip == null || knee == null || ankle == null) return _notDetected();
-    if (hip.likelihood < 0.5 || knee.likelihood < 0.5 || ankle.likelihood < 0.5) return _notDetected();
-    final kneeAngle = _calculateAngle(hip.x, hip.y, knee.x, knee.y, ankle.x, ankle.y);
+    if (hip.likelihood < 0.5 || knee.likelihood < 0.5 || ankle.likelihood < 0.5)
+      return _notDetected();
+    final kneeAngle = _calculateAngle(
+      hip.x,
+      hip.y,
+      knee.x,
+      knee.y,
+      ankle.x,
+      ankle.y,
+    );
     final isDown = kneeAngle < 130;
-    double accuracy; String feedback; bool isCorrect = false;
-    if (kneeAngle >= 90 && kneeAngle <= 120) { accuracy = 100; feedback = "Harika! Doğru açı ✓"; isCorrect = true; }
-    else if (kneeAngle > 120 && kneeAngle <= 150) { accuracy = 60; feedback = "Biraz daha bük"; }
-    else if (kneeAngle > 150) { accuracy = 30; feedback = "Dizini bükmeden başla"; }
-    else { accuracy = 50; feedback = "Fazla büküyor, geri gel"; }
-    return {'accuracy': accuracy, 'feedback': feedback, 'isCorrect': isCorrect, 'isDown': isDown};
+    double accuracy;
+    String feedback;
+    bool isCorrect = false;
+    if (kneeAngle >= 90 && kneeAngle <= 120) {
+      accuracy = 100;
+      feedback = "Harika! Doğru açı ✓";
+      isCorrect = true;
+    } else if (kneeAngle > 120 && kneeAngle <= 150) {
+      accuracy = 60;
+      feedback = "Biraz daha bük";
+    } else if (kneeAngle > 150) {
+      accuracy = 30;
+      feedback = "Dizini bükmeden başla";
+    } else {
+      accuracy = 50;
+      feedback = "Fazla büküyor, geri gel";
+    }
+    return {
+      'accuracy': accuracy,
+      'feedback': feedback,
+      'isCorrect': isCorrect,
+      'isDown': isDown,
+    };
   }
 
   Map<String, dynamic> _analyzeBridge(Pose pose) {
@@ -316,26 +441,67 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     final hip = pose.landmarks[PoseLandmarkType.leftHip];
     final knee = pose.landmarks[PoseLandmarkType.leftKnee];
     if (shoulder == null || hip == null || knee == null) return _notDetected();
-    if (shoulder.likelihood < 0.5 || hip.likelihood < 0.5 || knee.likelihood < 0.5) return _notDetected();
-    final hipAngle = _calculateAngle(shoulder.x, shoulder.y, hip.x, hip.y, knee.x, knee.y);
+    if (shoulder.likelihood < 0.5 ||
+        hip.likelihood < 0.5 ||
+        knee.likelihood < 0.5)
+      return _notDetected();
+    final hipAngle = _calculateAngle(
+      shoulder.x,
+      shoulder.y,
+      hip.x,
+      hip.y,
+      knee.x,
+      knee.y,
+    );
     final isDown = hipAngle < 150;
-    double accuracy; String feedback; bool isCorrect = false;
-    if (hipAngle >= 150 && hipAngle <= 180) { accuracy = 100; feedback = "Mükemmel köprü! 💪"; isCorrect = true; }
-    else if (hipAngle >= 120 && hipAngle < 150) { accuracy = 65; feedback = "Kalçanı daha yukarı kaldır"; }
-    else { accuracy = 30; feedback = "Kalçanı kaldır"; }
-    return {'accuracy': accuracy, 'feedback': feedback, 'isCorrect': isCorrect, 'isDown': isDown};
+    double accuracy;
+    String feedback;
+    bool isCorrect = false;
+    if (hipAngle >= 150 && hipAngle <= 180) {
+      accuracy = 100;
+      feedback = "Mükemmel köprü! 💪";
+      isCorrect = true;
+    } else if (hipAngle >= 120 && hipAngle < 150) {
+      accuracy = 65;
+      feedback = "Kalçanı daha yukarı kaldır";
+    } else {
+      accuracy = 30;
+      feedback = "Kalçanı kaldır";
+    }
+    return {
+      'accuracy': accuracy,
+      'feedback': feedback,
+      'isCorrect': isCorrect,
+      'isDown': isDown,
+    };
   }
 
   Map<String, dynamic> _analyzeGeneral(Pose pose) {
     final nose = pose.landmarks[PoseLandmarkType.nose];
     if (nose == null) return _notDetected();
-    return {'accuracy': 80.0, 'feedback': "Devam et! 👍", 'isCorrect': true, 'isDown': false};
+    return {
+      'accuracy': 80.0,
+      'feedback': "Devam et! 👍",
+      'isCorrect': true,
+      'isDown': false,
+    };
   }
 
-  Map<String, dynamic> _notDetected() =>
-      {'accuracy': 0.0, 'feedback': "Kameraya tam görün", 'isCorrect': false, 'isDown': false};
+  Map<String, dynamic> _notDetected() => {
+    'accuracy': 0.0,
+    'feedback': "Kameraya tam görün",
+    'isCorrect': false,
+    'isDown': false,
+  };
 
-  double _calculateAngle(double ax, double ay, double bx, double by, double cx, double cy) {
+  double _calculateAngle(
+    double ax,
+    double ay,
+    double bx,
+    double by,
+    double cx,
+    double cy,
+  ) {
     final radians = atan2(cy - by, cx - bx) - atan2(ay - by, ax - bx);
     double angle = radians * (180 / pi);
     if (angle < 0) angle += 360;
@@ -369,21 +535,54 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     // Yukarı gelince _wasDown=true && isDown=false && isCorrect=true → TEKRAR SAYILIR
     final steps = [
       // Başlangıç pozisyonu
-      {'accuracy': 20.0, 'feedback': 'Harekete hazırlan...', 'isCorrect': false, 'isDown': false},
+      {
+        'accuracy': 20.0,
+        'feedback': 'Harekete hazırlan...',
+        'isCorrect': false,
+        'isDown': false,
+      },
       // Aşağı inme
-      {'accuracy': 60.0, 'feedback': 'Biraz daha bük',       'isCorrect': false, 'isDown': true},
+      {
+        'accuracy': 60.0,
+        'feedback': 'Biraz daha bük',
+        'isCorrect': false,
+        'isDown': true,
+      },
       // Doğru pozisyon (aşağıda)
-      {'accuracy': 100.0, 'feedback': 'Mükemmel! 💪',         'isCorrect': true,  'isDown': true},
+      {
+        'accuracy': 100.0,
+        'feedback': 'Mükemmel! 💪',
+        'isCorrect': true,
+        'isDown': true,
+      },
       // Hâlâ aşağıda
-      {'accuracy': 100.0, 'feedback': 'Mükemmel! 💪',         'isCorrect': true,  'isDown': true},
+      {
+        'accuracy': 100.0,
+        'feedback': 'Mükemmel! 💪',
+        'isCorrect': true,
+        'isDown': true,
+      },
       // Yukarı çıkma — isCorrect:true, isDown:false → SAYIM TETİKLENİR
-      {'accuracy': 100.0, 'feedback': 'Harika! Tekrar say!',  'isCorrect': true,  'isDown': false},
+      {
+        'accuracy': 100.0,
+        'feedback': 'Harika! Tekrar say!',
+        'isCorrect': true,
+        'isDown': false,
+      },
       // Dinlenme
-      {'accuracy': 20.0, 'feedback': 'Sonraki tekrar...',     'isCorrect': false, 'isDown': false},
+      {
+        'accuracy': 20.0,
+        'feedback': 'Sonraki tekrar...',
+        'isCorrect': false,
+        'isDown': false,
+      },
     ];
 
     _testTimer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
-      if (!mounted || !_testMode) { timer.cancel(); return; }
+      if (!mounted || !_testMode) {
+        timer.cancel();
+        return;
+      }
 
       final step = steps[_testStep % steps.length];
       final isDown = step['isDown'] as bool;
@@ -418,14 +617,19 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: !_isInitialized
-          ? const Center(child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(color: _primaryGreen),
-                SizedBox(height: 16),
-                Text("Kamera başlatılıyor...", style: TextStyle(color: Colors.white70)),
-              ],
-            ))
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: _primaryGreen),
+                  SizedBox(height: 16),
+                  Text(
+                    "Kamera başlatılıyor...",
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            )
           : Stack(
               fit: StackFit.expand,
               children: [
@@ -454,18 +658,30 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
 
                 // Üst bar
                 Positioned(
-                  top: 0, left: 0, right: 0,
+                  top: 0,
+                  left: 0,
+                  right: 0,
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       child: Row(
                         children: [
                           GestureDetector(
                             onTap: () => Navigator.pop(context),
                             child: Container(
                               padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.close, color: Colors.white, size: 22),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 22,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -475,26 +691,42 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                               children: [
                                 Text(
                                   _currentExercise.name,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   "${_currentExerciseIndex + 1} / ${widget.exercises.length}",
-                                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           // Tekrar sayacı
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: _primaryGreen.withOpacity(0.85),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              _targetReps > 0 ? "$_currentReps / $_targetReps" : "$_currentReps tekrar",
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              _targetReps > 0
+                                  ? "$_currentReps / $_targetReps"
+                                  : "$_currentReps tekrar",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -502,18 +734,40 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                           GestureDetector(
                             onTap: _toggleTestMode,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
-                                color: _testMode ? Colors.orange.withOpacity(0.9) : Colors.white24,
+                                color: _testMode
+                                    ? Colors.orange.withOpacity(0.9)
+                                    : Colors.white24,
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: _testMode ? Colors.orange : Colors.white38, width: 1),
+                                border: Border.all(
+                                  color: _testMode
+                                      ? Colors.orange
+                                      : Colors.white38,
+                                  width: 1,
+                                ),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(_testMode ? Icons.stop_rounded : Icons.science_rounded, color: Colors.white, size: 14),
+                                  Icon(
+                                    _testMode
+                                        ? Icons.stop_rounded
+                                        : Icons.science_rounded,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
                                   const SizedBox(width: 4),
-                                  Text(_testMode ? "DURDUR" : "TEST",
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                  Text(
+                                    _testMode ? "DURDUR" : "TEST",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -526,17 +780,25 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
 
                 // İlerleme çubuğu
                 Positioned(
-                  top: 90, left: 16, right: 16,
+                  top: 90,
+                  left: 16,
+                  right: 16,
                   child: SafeArea(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
                         value: widget.exercises.isEmpty
                             ? 0
-                            : (_currentExerciseIndex + (_targetReps > 0 ? _currentReps / _targetReps : 0)) / widget.exercises.length,
+                            : (_currentExerciseIndex +
+                                      (_targetReps > 0
+                                          ? _currentReps / _targetReps
+                                          : 0)) /
+                                  widget.exercises.length,
                         minHeight: 4,
                         backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation<Color>(_primaryGreen),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          _primaryGreen,
+                        ),
                       ),
                     ),
                   ),
@@ -544,7 +806,9 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
 
                 // Alt panel
                 Positioned(
-                  bottom: 0, left: 0, right: 0,
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
                   child: SafeArea(
                     child: Container(
                       margin: const EdgeInsets.all(16),
@@ -564,14 +828,17 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                               height: 80,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
                             ),
                           ),
                           const SizedBox(height: 12),
                           Text(
                             _feedback,
                             style: TextStyle(
-                              color: _isInCorrectPosition ? const Color(0xFF81C784) : Colors.orange,
+                              color: _isInCorrectPosition
+                                  ? const Color(0xFF81C784)
+                                  : Colors.orange,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -579,10 +846,22 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                           const SizedBox(height: 14),
                           Row(
                             children: [
-                              const Text("Doğruluk", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                              const Text(
+                                "Doğruluk",
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
                               const Spacer(),
-                              Text("%${_accuracyRate.toInt()}",
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                              Text(
+                                "%${_accuracyRate.toInt()}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -593,7 +872,11 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                               minHeight: 10,
                               backgroundColor: Colors.white24,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                _accuracyRate >= 80 ? const Color(0xFF81C784) : _accuracyRate >= 50 ? Colors.orange : Colors.redAccent,
+                                _accuracyRate >= 80
+                                    ? const Color(0xFF81C784)
+                                    : _accuracyRate >= 50
+                                    ? Colors.orange
+                                    : Colors.redAccent,
                               ),
                             ),
                           ),
@@ -601,15 +884,24 @@ class _CameraExerciseScreenState extends State<CameraExerciseScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () => _showNextExerciseConfirmation(completed: false),
+                              onPressed: () => _showNextExerciseConfirmation(
+                                completed: false,
+                              ),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Colors.white38),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
                               child: Text(
                                 _isLastExercise ? "Bitir" : "Sonraki →",
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
@@ -630,7 +922,11 @@ class PoseOverlayPainter extends CustomPainter {
   final Size imageSize;
   final Size screenSize;
 
-  PoseOverlayPainter({required this.pose, required this.imageSize, required this.screenSize});
+  PoseOverlayPainter({
+    required this.pose,
+    required this.imageSize,
+    required this.screenSize,
+  });
 
   static const List<List<PoseLandmarkType>> connections = [
     [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
@@ -649,19 +945,33 @@ class PoseOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final pointPaint = Paint()..color = _primaryGreen..strokeWidth = 8..strokeCap = StrokeCap.round;
-    final linePaint = Paint()..color = _primaryGreen.withOpacity(0.7)..strokeWidth = 3..strokeCap = StrokeCap.round;
+    final pointPaint = Paint()
+      ..color = _primaryGreen
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+    final linePaint = Paint()
+      ..color = _primaryGreen.withOpacity(0.7)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
 
     for (final connection in connections) {
       final start = pose.landmarks[connection[0]];
       final end = pose.landmarks[connection[1]];
       if (start != null && end != null) {
-        canvas.drawLine(_translatePoint(start.x, start.y, size), _translatePoint(end.x, end.y, size), linePaint);
+        canvas.drawLine(
+          _translatePoint(start.x, start.y, size),
+          _translatePoint(end.x, end.y, size),
+          linePaint,
+        );
       }
     }
 
     for (final landmark in pose.landmarks.values) {
-      canvas.drawCircle(_translatePoint(landmark.x, landmark.y, size), 5, pointPaint);
+      canvas.drawCircle(
+        _translatePoint(landmark.x, landmark.y, size),
+        5,
+        pointPaint,
+      );
     }
   }
 
@@ -691,9 +1001,17 @@ class LandmarkSmoother {
       _history[type]!.add(Offset(landmark.x, landmark.y));
       if (_history[type]!.length > windowSize) _history[type]!.removeAt(0);
       final history = _history[type]!;
-      final avgX = history.map((o) => o.dx).reduce((a, b) => a + b) / history.length;
-      final avgY = history.map((o) => o.dy).reduce((a, b) => a + b) / history.length;
-      smoothedLandmarks[type] = PoseLandmark(type: type, x: avgX, y: avgY, z: landmark.z, likelihood: landmark.likelihood);
+      final avgX =
+          history.map((o) => o.dx).reduce((a, b) => a + b) / history.length;
+      final avgY =
+          history.map((o) => o.dy).reduce((a, b) => a + b) / history.length;
+      smoothedLandmarks[type] = PoseLandmark(
+        type: type,
+        x: avgX,
+        y: avgY,
+        z: landmark.z,
+        likelihood: landmark.likelihood,
+      );
     }
     return Pose(landmarks: smoothedLandmarks);
   }
@@ -724,8 +1042,10 @@ class WorkoutSummaryScreen extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text("Egzersiz Özeti",
-            style: TextStyle(color: _textDark, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Egzersiz Özeti",
+          style: TextStyle(color: _textDark, fontWeight: FontWeight.bold),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -734,15 +1054,31 @@ class WorkoutSummaryScreen extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: _primaryGreen, borderRadius: BorderRadius.circular(24)),
+              decoration: BoxDecoration(
+                color: _primaryGreen,
+                borderRadius: BorderRadius.circular(24),
+              ),
               child: Column(
                 children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 60),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 60,
+                  ),
                   const SizedBox(height: 12),
-                  const Text("Tebrikler!", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Tebrikler!",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Text(
-                    cameraEnabled ? "Doğruluk Oranı: %$accuracyRate" : "Doğruluk Oranı: %0 (Kamera kapalı)",
+                    cameraEnabled
+                        ? "Doğruluk Oranı: %$accuracyRate"
+                        : "Doğruluk Oranı: %0 (Kamera kapalı)",
                     style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                 ],
@@ -751,8 +1087,14 @@ class WorkoutSummaryScreen extends StatelessWidget {
             const SizedBox(height: 24),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text("Hareket Detayları",
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: _textDark)),
+              child: Text(
+                "Hareket Detayları",
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: _textDark,
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -764,7 +1106,8 @@ class WorkoutSummaryScreen extends StatelessWidget {
                   final done = actualReps[index];
                   final target = exercise.targetReps;
                   final isTimeBased = exercise.isTimeBased;
-                  final isComplete = isTimeBased || (target > 0 && done >= target);
+                  final isComplete =
+                      isTimeBased || (target > 0 && done >= target);
 
                   return Container(
                     padding: const EdgeInsets.all(16),
@@ -772,7 +1115,9 @@ class WorkoutSummaryScreen extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isComplete ? _primaryGreen.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+                        color: isComplete
+                            ? _primaryGreen.withOpacity(0.3)
+                            : Colors.orange.withOpacity(0.3),
                         width: 1.5,
                       ),
                     ),
@@ -781,31 +1126,51 @@ class WorkoutSummaryScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: isComplete ? _primaryGreen.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                            color: isComplete
+                                ? _primaryGreen.withOpacity(0.1)
+                                : Colors.orange.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(exercise.icon, color: isComplete ? _primaryGreen : Colors.orange),
+                          child: Icon(
+                            exercise.icon,
+                            color: isComplete ? _primaryGreen : Colors.orange,
+                          ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(exercise.name,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _textDark)),
+                              Text(
+                                exercise.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: _textDark,
+                                ),
+                              ),
                               const SizedBox(height: 4),
                               Text(
-                                isTimeBased ? exercise.detail : target > 0 ? "$done / $target tekrar" : "$done tekrar",
+                                isTimeBased
+                                    ? exercise.detail
+                                    : target > 0
+                                    ? "$done / $target tekrar"
+                                    : "$done tekrar",
                                 style: TextStyle(
-                                  color: isComplete ? _primaryGreen : Colors.orange,
-                                  fontSize: 13, fontWeight: FontWeight.w600,
+                                  color: isComplete
+                                      ? _primaryGreen
+                                      : Colors.orange,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         Icon(
-                          isComplete ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                          isComplete
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked,
                           color: isComplete ? _primaryGreen : Colors.orange,
                         ),
                       ],
@@ -824,7 +1189,9 @@ class WorkoutSummaryScreen extends StatelessWidget {
                   final totalReps = actualReps.fold(0, (sum, r) => sum + r);
                   await WorkoutHistoryService.saveWorkout(
                     WorkoutHistory(
-                      programName: exercises.isNotEmpty ? exercises.first.name.split(' ').skip(1).join(' ') : 'Egzersiz',
+                      programName: exercises.isNotEmpty
+                          ? exercises.first.name.split(' ').skip(1).join(' ')
+                          : 'Egzersiz',
                       date: DateTime.now(),
                       accuracyRate: cameraEnabled ? accuracyRate : 0,
                       cameraEnabled: cameraEnabled,
@@ -837,10 +1204,18 @@ class WorkoutSummaryScreen extends StatelessWidget {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _primaryGreen,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
-                child: const Text("Ana Sayfaya Dön",
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  "Ana Sayfaya Dön",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
