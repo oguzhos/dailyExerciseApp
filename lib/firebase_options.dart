@@ -63,6 +63,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '141037340980',
     projectId: 'mobiluygulama-dcc74',
     storageBucket: 'mobiluygulama-dcc74.firebasestorage.app',
+    androidClientId: '141037340980-ibnc44cdc3mgthmlnmg09gb66mdtjekf.apps.googleusercontent.com',
+    iosClientId: '141037340980-m0lnbf6b7gmp28m1f9fkvcg4526lo07o.apps.googleusercontent.com',
     iosBundleId: 'com.example.denemeProjesi',
   );
 
@@ -72,6 +74,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '141037340980',
     projectId: 'mobiluygulama-dcc74',
     storageBucket: 'mobiluygulama-dcc74.firebasestorage.app',
+    androidClientId: '141037340980-ibnc44cdc3mgthmlnmg09gb66mdtjekf.apps.googleusercontent.com',
+    iosClientId: '141037340980-m0lnbf6b7gmp28m1f9fkvcg4526lo07o.apps.googleusercontent.com',
     iosBundleId: 'com.example.denemeProjesi',
   );
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // <--- EKLENDİ: Firebase Veritabanı
-import 'package:firebase_auth/firebase_auth.dart'; // <--- EKLENDİ: Firebase Kimlik Doğrulama
-import 'profile_screen.dart'; // <--- EKLENDİ: Profil Ekranı Yönlendirmesi
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'profile_screen.dart';
 import 'onboarding_screen.dart';
 import 'workout_detail_screen.dart';
 import 'history_screen.dart';
@@ -38,14 +38,42 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
     _loadScenario();
   }
 
-  // Geçmiş veriden senaryoyu ve streak'i otomatik hesapla
+  // Geçmiş veriden senaryoyu ve streak'i GERÇEK bir şekilde hesapla
   Future<void> _loadScenario() async {
     final history = await WorkoutHistoryService.getHistory();
     final prefs = await SharedPreferences.getInstance();
-    final onboardingDone = prefs.getInt('user_scenario') ?? 0;
+    int onboardingDone = prefs.getInt('user_scenario') ?? 0;
     final userName = prefs.getString('user_name') ?? '';
 
-    // Hiç onboarding yapılmamışsa → Senaryo 0
+    // --- YENİ EKLENEN: CİHAZ SIFIRLANMIŞSA BULUTTAN KURTARMA OPERASYONU ---
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && onboardingDone == 0) {
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (userDoc.exists && userDoc.data()?['onboardingDone'] == true) {
+          // Kullanıcı önceden onboarding yapmış, bilgileri cihaza geri yükle!
+          final data = userDoc.data()!;
+          onboardingDone = 1; // Başlangıç adımını atla
+          await prefs.setInt('user_scenario', 1);
+          await prefs.setString(
+            'program_type',
+            data['program_type'] ?? 'sport',
+          );
+          if (data['doctor_code'] != null)
+            await prefs.setString('doctor_code', data['doctor_code']);
+          if (data['sport_category'] != null)
+            await prefs.setString('sport_category', data['sport_category']);
+        }
+      } catch (e) {
+        debugPrint("Buluttan onboarding verisi çekilemedi: $e");
+      }
+    }
+    // ----------------------------------------------------------------------
+
+    // Hiç onboarding yapılmamışsa
     if (onboardingDone == 0) {
       setState(() {
         _userScenario = 0;
@@ -55,7 +83,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       return;
     }
 
-    // Hiç egzersiz yapılmamışsa → Senaryo 1 (onboarding bitti ama egzersiz yok)
+    // Hiç egzersiz yapılmamışsa
     if (history.isEmpty) {
       setState(() {
         _userScenario = 1;
@@ -67,29 +95,40 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
 
-    // Bugün egzersiz yapıldı mı?
-    final todayWorkout = history.any((h) {
-      final d = DateTime(h.date.year, h.date.month, h.date.day);
-      return d == today;
-    });
+    // 1. Tüm antrenman tarihlerini benzersiz (unique) gün olarak al ve sırala
+    final historyDates = history
+        .map((h) => DateTime(h.date.year, h.date.month, h.date.day))
+        .toSet()
+        .toList();
+    historyDates.sort((a, b) => b.compareTo(a)); // En yeni tarih en başta
 
-    // Son 7 günde kaç gün egzersiz yapıldı?
-    int daysWithWorkout = 0;
-    for (int i = 0; i < 7; i++) {
-      final day = today.subtract(Duration(days: i));
-      final hasWorkout = history.any((h) {
-        final d = DateTime(h.date.year, h.date.month, h.date.day);
-        return d == day;
-      });
-      if (hasWorkout) daysWithWorkout++;
+    final todayWorkout = historyDates.contains(today);
+    final yesterdayWorkout = historyDates.contains(yesterday);
+
+    // 2. GERÇEK STREAK (SERİ) HESAPLAMASI
+    int streakCount = 0;
+    if (todayWorkout || yesterdayWorkout) {
+      // Eğer bugün veya dün antrenman varsa seri devam ediyordur, kesintisiz günleri geriye doğru say
+      DateTime checkDate = todayWorkout ? today : yesterday;
+      while (historyDates.contains(checkDate)) {
+        streakCount++;
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      }
+    } else {
+      // Dün de bugün de antrenman yoksa seri KESİNLİKLE kopmuştur
+      streakCount = 0;
     }
 
-    // Streak: son 7 günde 6+ gün egzersiz yapıldıysa streak var
-    final hasStreak = daysWithWorkout >= 6;
-    final streakCount = daysWithWorkout;
+    // 3. KAÇ GÜN KAÇIRILDI HESAPLAMASI (Matematiksel Fark)
+    int missedDays = 0;
+    if (historyDates.isNotEmpty && !todayWorkout) {
+      final lastWorkoutDate = historyDates.first;
+      missedDays = today.difference(lastWorkoutDate).inDays;
+    }
 
-    // Bugünkü doğruluk oranını bul
+    // 4. BUGÜNKÜ DOĞRULUK ORANI
     int todayAccuracy = 0;
     if (todayWorkout) {
       final todayWorkouts = history.where((h) {
@@ -101,27 +140,16 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       }
     }
 
-    // Kaç gündür yapılmadı?
-    int missedDays = 0;
-    if (!todayWorkout) {
-      for (int i = 1; i <= 30; i++) {
-        final day = today.subtract(Duration(days: i));
-        final hasWorkout = history.any((h) {
-          final d = DateTime(h.date.year, h.date.month, h.date.day);
-          return d == day;
-        });
-        if (hasWorkout) break;
-        missedDays++;
-      }
-    }
-
+    // 5. SENARYO BELİRLEME
     int scenario;
     if (todayWorkout) {
-      scenario = 2;
-    } else if (!hasStreak && daysWithWorkout < 4) {
-      scenario = 3;
+      scenario = 2; // Bugün antrenman yapılmış -> "Harikasın" ekranı
+    } else if (streakCount == 0 && missedDays > 1) {
+      scenario =
+          3; // Seri kopmuş ve üzerinden 1 günden fazla geçmiş -> "Özledik" ekranı
     } else {
-      scenario = 1;
+      scenario =
+          1; // Bugün antrenman yapılmamış ama seri henüz kopmamış (dün yapmış) -> "Günün Hedefi"
     }
 
     setState(() {
@@ -132,8 +160,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       _userName = userName;
     });
 
-    // <--- YENİ EKLENEN KISIM: Canlı hesaplanan seriyi Firebase'e de eşitle
-    final user = FirebaseAuth.instance.currentUser;
+    // 6. FIREBASE'İ GÜNCELLE
     if (user != null) {
       FirebaseFirestore.instance
           .collection('users')

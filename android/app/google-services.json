@@ -12,7 +12,20 @@
           "package_name": "com.example.deneme_projesi"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "141037340980-ibnc44cdc3mgthmlnmg09gb66mdtjekf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.deneme_projesi",
+            "certificate_hash": "608b618d61def7d8a4e6a9243c02ecd06f74b3d4"
+          }
+        },
+        {
+          "client_id": "141037340980-qmqtmhoiem70t4bgsqsq1ghig7dpbp7t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDOSCYM4V0qK0ubGkCJ5kxBtQKVoBFJqFU"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "141037340980-qmqtmhoiem70t4bgsqsq1ghig7dpbp7t.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "141037340980-m0lnbf6b7gmp28m1f9fkvcg4526lo07o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.denemeProjesi"
+              }
+            }
+          ]
         }
       }
     }
