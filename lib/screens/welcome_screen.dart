@@ -73,17 +73,22 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
 
         // Firestore'a kullanıcı bilgilerini kaydet
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'firstName': _firstNameController.text.trim(),
-          'lastName': _lastNameController.text.trim(),
-          'email': email,
-          'currentStreak': 0,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+  'firstName': _firstNameController.text.trim(),
+  'lastName': _lastNameController.text.trim(),
+  'email': email,
+  'currentStreak': 0,
+  'onboardingDone': false, // EKLE
+  'createdAt': FieldValue.serverTimestamp(),
+});;
       }
 
       // Arkadaşının eklediği SharedPreferences kaydı (Giriş yapıldı olarak işaretle)
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('is_logged_in', true);
+await prefs.setBool('is_logged_in', true);
+await prefs.remove('user_scenario'); // EKLE
+await prefs.remove('program_type');  // EKLE
+await prefs.remove('doctor_code');   // EKLE
+await prefs.remove('sport_category'); // EKLE
 
       _navigateToHome();
     } on FirebaseAuthException catch (e) {

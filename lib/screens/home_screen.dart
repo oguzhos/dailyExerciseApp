@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'profile_screen.dart';
-import 'onboarding_screen.dart';
 import 'workout_detail_screen.dart';
 import 'history_screen.dart';
 
@@ -392,13 +391,28 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
             const SizedBox(height: 30),
             ElevatedButton(
               onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const OnboardingScreen(),
-                  ),
-                );
-                _loadScenario();
+                // Onboarding tamamlandı olarak işaretle
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setInt('user_scenario', 1);
+
+                // Firestore'a da yaz
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({'onboardingDone': true}, SetOptions(merge: true));
+                }
+
+                if (context.mounted) {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WorkoutDetailScreen(),
+                    ),
+                  );
+                  _loadScenario();
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,

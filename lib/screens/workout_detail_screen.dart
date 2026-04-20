@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'camera_exercise_screen.dart';
 
 const Color primaryGreen = Color(0xFF4A6849);
@@ -7,306 +6,227 @@ const Color backgroundBeige = Color(0xFFFDFCF4);
 const Color cardBeige = Color(0xFFF2F0E4);
 const Color textDark = Color(0xFF2C3E2C);
 
+// --- ANALİZ TİPİ ---
+enum AnalysisType {
+  sitToStand,
+  straightLegRaise,
+  heelSlide,
+  miniSquat,
+  hipAbduction,
+  pelvicTilt,
+  bridge,
+  birdDog,
+  wallPushUp,
+  shoulderFlexion,
+  shoulderAbduction,
+  heelRaise,
+  singleLegStand,
+  general,
+}
+
 // --- EGZERSİZ MODELİ ---
 class Exercise {
   final String name;
   final String detail;
+  final String description;
   final IconData icon;
   final int targetReps;
   final bool isTimeBased;
-  final String imageUrl; // Hareket görseli
+  final String imageUrl;
+  final AnalysisType analysisType;
 
   const Exercise({
     required this.name,
     required this.detail,
+    required this.description,
     required this.icon,
     required this.imageUrl,
+    required this.analysisType,
     this.targetReps = 10,
     this.isTimeBased = false,
   });
 }
 
-// --- EGZERSİZ PROGRAMLARI ---
-class WorkoutPrograms {
-  static const Map<String, Map<String, dynamic>> doctorPrograms = {
-    'DR001': {
-      'title': 'Diz Rehabilitasyon Programı',
-      'image': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=1000&q=80',
-      'duration': '20 Dk',
-      'calories': '80 Kal',
-      'level': 'Hafif',
-      'exercises': [
+// --- KATEGORİ MODELİ ---
+class ExerciseCategory {
+  final String name;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+  final List<Exercise> exercises;
+
+  const ExerciseCategory({
+    required this.name,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+    required this.exercises,
+  });
+}
+
+// --- EGZERSİZ KÜTÜPHANESİ ---
+class ExerciseLibrary {
+  static const List<ExerciseCategory> categories = [
+    ExerciseCategory(
+      name: 'Alt Vücut',
+      subtitle: 'Rehabilitasyon',
+      icon: Icons.directions_walk_rounded,
+      color: Color(0xFF4A6849),
+      bgColor: Color(0xFFE8F5E9),
+      exercises: [
         Exercise(
-          name: 'Diz Fleksiyonu',
-          detail: '15 Tekrar • Ayakta diz bükme hareketi',
-          icon: Icons.accessibility_new,
-          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
-          targetReps: 15,
+          name: 'Sit-to-Stand',
+          detail: '10 Tekrar • Fonksiyonel kalkış',
+          description: 'Sandalyeden kalkarken dizleri 90°\'den 160°\'ye getir. Dizler içe çökmesin.',
+          icon: Icons.airline_seat_legroom_extra,
+          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.sitToStand,
+          targetReps: 10,
         ),
         Exercise(
-          name: 'Düz Bacak Kaldırma',
-          detail: '10 Tekrar • Sırtüstü bacak ekstansiyonu',
-          icon: Icons.airline_seat_legroom_extra,
+          name: 'Straight Leg Raise',
+          detail: '10 Tekrar • Quadriceps aktivasyonu',
+          description: 'Sırt üstü yatarak bacağını düz tutup 45° kaldır. Diz hiç kırılmamalı.',
+          icon: Icons.accessibility_new,
           imageUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.straightLegRaise,
+          targetReps: 10,
+        ),
+        Exercise(
+          name: 'Heel Slide',
+          detail: '10 Tekrar • Diz mobilitesi',
+          description: 'Sırt üstü yatarak topuğu yavaşça kendine çek. Diz 180°\'den 60°\'ye gelsin.',
+          icon: Icons.swap_vert_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.heelSlide,
           targetReps: 10,
         ),
         Exercise(
           name: 'Mini Squat',
-          detail: '8 Tekrar • Kısmi diz bükme egzersizi',
+          detail: '10 Tekrar • Güç ve kontrol',
+          description: 'Ayakta hafifçe çömel. Diz 180°\'den 120°\'ye gelsin, ayak hizasını geçmesin.',
           icon: Icons.fitness_center,
           imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
+          analysisType: AnalysisType.miniSquat,
+          targetReps: 10,
         ),
         Exercise(
-          name: 'Kuadriseps Gerilmesi',
-          detail: '12 Tekrar • Ön uyluk kası aktivasyonu',
-          icon: Icons.self_improvement,
+          name: 'Hip Abduction',
+          detail: '10 Tekrar • Kalça stabilitesi',
+          description: 'Yan yatarak bacağını 30-45° kaldır. Diz düz, gövde sabit kalmalı.',
+          icon: Icons.open_with,
           imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.hipAbduction,
+          targetReps: 10,
+        ),
+      ],
+    ),
+    ExerciseCategory(
+      name: 'Core',
+      subtitle: 'Gövde Stabilitesi',
+      icon: Icons.self_improvement_rounded,
+      color: Color(0xFF7986CB),
+      bgColor: Color(0xFFEEF0FB),
+      exercises: [
+        Exercise(
+          name: 'Pelvic Tilt',
+          detail: '15 Tekrar • Bel kontrolü',
+          description: 'Sırt üstü yatarak beli yavaşça zemine bastır. Küçük (5-15°) kontrollü hareket.',
+          icon: Icons.sync_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.pelvicTilt,
+          targetReps: 15,
+        ),
+        Exercise(
+          name: 'Bridge',
+          detail: '12 Tekrar • Glute ve core',
+          description: 'Sırt üstü dizler 90°, kalçayı kaldır. Omuz-kalça-diz düz çizgi oluşturmalı.',
+          icon: Icons.landscape_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.bridge,
           targetReps: 12,
         ),
         Exercise(
-          name: 'Terminal Diz Ekstansiyonu',
-          detail: '10 Tekrar • Son açıda diz düzeltme',
-          icon: Icons.directions_walk,
+          name: 'Bird Dog',
+          detail: '10 Tekrar • Stabilite',
+          description: 'Dört ayak pozisyonunda karşı kol ve bacağı düz uzat. Gövde döndürülmemeli.',
+          icon: Icons.pets_rounded,
           imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.birdDog,
           targetReps: 10,
         ),
       ],
-    },
-    'DR002': {
-      'title': 'Sırt Güçlendirme Programı',
-      'image': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80',
-      'duration': '25 Dk',
-      'calories': '100 Kal',
-      'level': 'Orta',
-      'exercises': [
+    ),
+    ExerciseCategory(
+      name: 'Üst Vücut',
+      subtitle: 'Omuz ve Kol',
+      icon: Icons.fitness_center_rounded,
+      color: Color(0xFFE57373),
+      bgColor: Color(0xFFFDEDED),
+      exercises: [
         Exercise(
-          name: 'Köprü Egzersizi',
-          detail: '12 Tekrar • Kalça ekstansörü aktivasyonu',
-          icon: Icons.landscape,
-          imageUrl: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=600&q=80',
+          name: 'Wall Push-up',
+          detail: '12 Tekrar • Hafif kuvvet',
+          description: 'Duvara karşı şınav. Dirsek 180°\'den 90°\'ye gelsin, vücut düz kalmalı.',
+          icon: Icons.crop_landscape_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.wallPushUp,
           targetReps: 12,
         ),
         Exercise(
-          name: 'Kuş-Köpek',
-          detail: '10 Tekrar • Çapraz ekstremite stabilizasyonu',
-          icon: Icons.pets,
+          name: 'Shoulder Flexion',
+          detail: '10 Tekrar • Omuz mobilitesi',
+          description: 'Kolu öne doğru 150-180° kaldır. Kontrollü, gövde geriye kaçmamalı.',
+          icon: Icons.arrow_upward_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.shoulderFlexion,
+          targetReps: 10,
+        ),
+        Exercise(
+          name: 'Shoulder Abduction',
+          detail: '10 Tekrar • Omuz güçlendirme',
+          description: 'Kolu yana doğru 90° kaldır. Kol düz, dirsek kırılmamalı.',
+          icon: Icons.open_in_full_rounded,
           imageUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.shoulderAbduction,
           targetReps: 10,
-        ),
-        Exercise(
-          name: 'Süperman Hareketi',
-          detail: '10 Tekrar • Sırtüstü gövde ekstansiyonu',
-          icon: Icons.flight,
-          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
-        Exercise(
-          name: 'Pron Plank',
-          detail: '30 Saniye • Gövde stabilizasyon egzersizi',
-          icon: Icons.horizontal_rule,
-          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
-          targetReps: 0,
-          isTimeBased: true,
-        ),
-        Exercise(
-          name: 'Pelvik Tilt',
-          detail: '15 Tekrar • Lumbar stabilizasyon hareketi',
-          icon: Icons.sync,
-          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 15,
         ),
       ],
-    },
-    'DEMO': {
-      'title': 'Demo Rehabilitasyon Programı',
-      'image': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1000&q=80',
-      'duration': '15 Dk',
-      'calories': '60 Kal',
-      'level': 'Kolay',
-      'exercises': [
+    ),
+    ExerciseCategory(
+      name: 'Denge',
+      subtitle: 'Stabilite ve Koordinasyon',
+      icon: Icons.balance_rounded,
+      color: Color(0xFFFFB74D),
+      bgColor: Color(0xFFFFF3E0),
+      exercises: [
         Exercise(
-          name: 'Servikal Rotasyon',
-          detail: '5 Tekrar • Boyun dönme hareketi',
-          icon: Icons.rotate_right,
+          name: 'Heel Raise',
+          detail: '15 Tekrar • Baldır ve denge',
+          description: 'Ayakta parmak ucuna yüksel. Ayak bileği 90°\'den 120°\'ye gelsin, dengeli.',
+          icon: Icons.arrow_circle_up_rounded,
           imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
-          targetReps: 5,
-        ),
-        Exercise(
-          name: 'Omuz Retraksiyon',
-          detail: '10 Tekrar • Kürek kemiği germe egzersizi',
-          icon: Icons.open_with,
-          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
-        Exercise(
-          name: 'Lumbar Fleksiyon',
-          detail: '8 Tekrar • Bel bölgesi esneme hareketi',
-          icon: Icons.airline_seat_legroom_extra,
-          imageUrl: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
-        ),
-      ],
-    },
-  };
-
-  static const Map<String, Map<String, dynamic>> sportPrograms = {
-    'weight_loss': {
-      'title': 'Kilo Verme Programı',
-      'image': 'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?auto=format&fit=crop&w=1000&q=80',
-      'duration': '30 Dk',
-      'calories': '250 Kal',
-      'level': 'Orta',
-      'exercises': [
-        Exercise(
-          name: 'Squat',
-          detail: '15 Tekrar • Diz ve kalça fleksiyonu',
-          icon: Icons.airline_seat_legroom_extra,
-          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.heelRaise,
           targetReps: 15,
         ),
         Exercise(
-          name: 'Plank',
-          detail: '30 Saniye • Gövde stabilizasyonu',
-          icon: Icons.horizontal_rule,
-          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
+          name: 'Single Leg Stand',
+          detail: '30 Saniye • Denge',
+          description: 'Tek ayak üzerinde dur. Diz 170-180° düz, gövde sabit kalmalı.',
+          icon: Icons.accessibility_new_rounded,
+          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
+          analysisType: AnalysisType.singleLegStand,
           targetReps: 0,
           isTimeBased: true,
         ),
-        Exercise(
-          name: 'Lunge',
-          detail: '10 Tekrar • Tek bacak öne adım egzersizi',
-          icon: Icons.directions_run,
-          imageUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
       ],
-    },
-    'yoga': {
-      'title': 'Esneklik & Yoga Programı',
-      'image': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1000&q=80',
-      'duration': '25 Dk',
-      'calories': '90 Kal',
-      'level': 'Kolay',
-      'exercises': [
-        Exercise(
-          name: 'Hamstring Gerilmesi',
-          detail: '5 Tekrar • Arka uyluk esneme hareketi',
-          icon: Icons.self_improvement,
-          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 5,
-        ),
-        Exercise(
-          name: 'Kalça Fleksör Gerilmesi',
-          detail: '5 Tekrar • Ön kalça bölgesi esneme',
-          icon: Icons.accessibility_new,
-          imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
-          targetReps: 5,
-        ),
-        Exercise(
-          name: 'Torasik Ekstansiyon',
-          detail: '8 Tekrar • Üst sırt açma hareketi',
-          icon: Icons.open_with,
-          imageUrl: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
-        ),
-      ],
-    },
-    'rehab': {
-      'title': 'Rehabilitasyon & Sağlık',
-      'image': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=1000&q=80',
-      'duration': '20 Dk',
-      'calories': '70 Kal',
-      'level': 'Hafif',
-      'exercises': [
-        Exercise(
-          name: 'Servikal Lateral Fleksiyon',
-          detail: '5 Tekrar • Boyun yan eğme hareketi',
-          icon: Icons.accessibility_new,
-          imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
-          targetReps: 5,
-        ),
-        Exercise(
-          name: 'Omuz Elevasyonu',
-          detail: '10 Tekrar • Omuz yükseltme egzersizi',
-          icon: Icons.open_with,
-          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
-        Exercise(
-          name: 'Lumbar Rotasyon',
-          detail: '8 Tekrar • Bel dönme hareketi',
-          icon: Icons.sync,
-          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
-        ),
-      ],
-    },
-    'general': {
-      'title': 'Genel Fitness Programı',
-      'image': 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1000&q=80',
-      'duration': '30 Dk',
-      'calories': '180 Kal',
-      'level': 'Orta',
-      'exercises': [
-        Exercise(
-          name: 'Squat',
-          detail: '15 Tekrar • Diz ve kalça fleksiyonu',
-          icon: Icons.airline_seat_legroom_extra,
-          imageUrl: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=600&q=80',
-          targetReps: 15,
-        ),
-        Exercise(
-          name: 'Pron Plank',
-          detail: '45 Saniye • Gövde stabilizasyonu',
-          icon: Icons.horizontal_rule,
-          imageUrl: 'https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?auto=format&fit=crop&w=600&q=80',
-          targetReps: 0,
-          isTimeBased: true,
-        ),
-        Exercise(
-          name: 'Lunge',
-          detail: '10 Tekrar • Tek bacak öne adım egzersizi',
-          icon: Icons.directions_run,
-          imageUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
-      ],
-    },
-    'suggested': {
-      'title': 'Kişisel Öneri Programı',
-      'image': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80',
-      'duration': '20 Dk',
-      'calories': '100 Kal',
-      'level': 'Kolay',
-      'exercises': [
-        Exercise(
-          name: 'Servikal Rotasyon',
-          detail: '8 Tekrar • Boyun dönme hareketi',
-          icon: Icons.rotate_right,
-          imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
-        ),
-        Exercise(
-          name: 'Torasik Ekstansiyon',
-          detail: '8 Tekrar • Üst sırt açma hareketi',
-          icon: Icons.open_with,
-          imageUrl: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 8,
-        ),
-        Exercise(
-          name: 'Köprü Egzersizi',
-          detail: '10 Tekrar • Kalça ekstansörü aktivasyonu',
-          icon: Icons.landscape,
-          imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
-          targetReps: 10,
-        ),
-      ],
-    },
-  };
+    ),
+  ];
 }
 
-// --- EGZERSİZ LİSTESİ EKRANI ---
+// --- EGZERSİZ DETAY EKRANI ---
 class WorkoutDetailScreen extends StatefulWidget {
   const WorkoutDetailScreen({super.key});
 
@@ -315,271 +235,243 @@ class WorkoutDetailScreen extends StatefulWidget {
 }
 
 class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
-  Map<String, dynamic>? _program;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProgram();
-  }
-
-  Future<void> _loadProgram() async {
-    final prefs = await SharedPreferences.getInstance();
-    final programType = prefs.getString('program_type'); // ?? kaldırıldı
-
-    // Onboarding yapılmamışsa null döner
-    if (programType == null) {
-      setState(() {
-        _program = null;
-        _isLoading = false;
-      });
-      return;
-    }
-
-    Map<String, dynamic>? program;
-
-    if (programType == 'doctor') {
-      final code = prefs.getString('doctor_code') ?? 'DEMO';
-      program = Map<String, dynamic>.from(
-        WorkoutPrograms.doctorPrograms[code] ??
-            WorkoutPrograms.doctorPrograms['DEMO']!,
-      );
-    } else if (programType == 'sport') {
-      final category = prefs.getString('sport_category') ?? 'general';
-      program = Map<String, dynamic>.from(
-        WorkoutPrograms.sportPrograms[category] ??
-            WorkoutPrograms.sportPrograms['general']!,
-      );
-    } else {
-      program = Map<String, dynamic>.from(
-        WorkoutPrograms.sportPrograms['suggested']!,
-      );
-    }
-
-    setState(() {
-      _program = program;
-      _isLoading = false;
-    });
-  }
+  ExerciseCategory? _selectedCategory;
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: backgroundBeige,
-        body: Center(child: CircularProgressIndicator(color: primaryGreen)),
-      );
-    }
-
-    // Program seçilmemişse boş ekran göster
-    if (_program == null) {
-      return Scaffold(
-        backgroundColor: backgroundBeige,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.fitness_center_outlined, size: 80, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              const Text(
-                'Henüz program seçilmedi',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Ana sayfadan programını seç.',
-                style: TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final exercises = _program!['exercises'] as List<Exercise>;
-
     return Scaffold(
       backgroundColor: backgroundBeige,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 220.0,
-            pinned: true,
-            backgroundColor: primaryGreen,
-            flexibleSpace: FlexibleSpaceBar(
+      appBar: _selectedCategory != null
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_rounded, color: textDark),
+                onPressed: () => setState(() => _selectedCategory = null),
+              ),
               title: Text(
-                _program!['title'] as String,
+                _selectedCategory!.name,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: textDark,
                   fontWeight: FontWeight.bold,
-                  fontSize: 15,
+                  fontSize: 20,
                 ),
               ),
-              background: Image.network(
-                _program!['image'] as String,
-                fit: BoxFit.cover,
-                color: Colors.black.withOpacity(0.3),
-                colorBlendMode: BlendMode.darken,
-              ),
+            )
+          : null,
+      body: _selectedCategory == null
+          ? _buildCategoryList()
+          : _buildExerciseList(_selectedCategory!),
+    );
+  }
+
+  // --- KATEGORİ LİSTESİ ---
+  Widget _buildCategoryList() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          const Text(
+            'Egzersizlerim',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: textDark,
             ),
           ),
+          const SizedBox(height: 6),
+          const Text(
+            'Bir kategori seç',
+            style: TextStyle(fontSize: 15, color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 1.1,
+              ),
+              itemCount: ExerciseLibrary.categories.length,
+              itemBuilder: (context, index) {
+                final cat = ExerciseLibrary.categories[index];
+                return _buildCategoryCard(cat);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _infoBadge(Icons.timer, _program!['duration'] as String),
-                      _infoBadge(Icons.local_fire_department, _program!['calories'] as String),
-                      _infoBadge(Icons.bar_chart_rounded, _program!['level'] as String),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  const Text(
-                    "Hareketler",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  ...exercises.map((e) => _exerciseItem(e)),
-                  const SizedBox(height: 30),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () => _showCameraModal(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGreen,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
+  Widget _buildCategoryCard(ExerciseCategory cat) {
+    return GestureDetector(
+      onTap: () => setState(() => _selectedCategory = cat),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: cat.color.withOpacity(0.2), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cat.bgColor,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(cat.icon, color: cat.color, size: 28),
+            ),
+            const Spacer(),
+            Text(
+              cat.name,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: textDark,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              cat.subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${cat.exercises.length} egzersiz',
+              style: TextStyle(
+                fontSize: 11,
+                color: cat.color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- EGZERSİZ LİSTESİ ---
+  Widget _buildExerciseList(ExerciseCategory cat) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(20),
+      itemCount: cat.exercises.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        return _buildExerciseCard(cat.exercises[index], cat.color);
+      },
+    );
+  }
+
+  Widget _buildExerciseCard(Exercise exercise, Color categoryColor) {
+    return GestureDetector(
+      onTap: () => _showCameraModal(context, exercise),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Görsel
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+              ),
+              child: Image.network(
+                exercise.imageUrl,
+                width: 90,
+                height: 90,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 90,
+                  height: 90,
+                  color: cardBeige,
+                  child: const Icon(Icons.image_not_supported_outlined,
+                      color: Colors.grey),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: textDark,
                       ),
-                      child: const Text(
-                        "EGZERSİZE BAŞLA",
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      exercise.description,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.grey, height: 1.4),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: categoryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        exercise.isTimeBased
+                            ? exercise.detail.split('•').first.trim()
+                            : '${exercise.targetReps} tekrar',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
+                          color: categoryColor,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 30),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Icon(Icons.play_circle_fill,
+                  color: categoryColor, size: 32),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _infoBadge(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: primaryGreen.withOpacity(0.2)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: primaryGreen, size: 24),
-          const SizedBox(height: 5),
-          Text(
-            text,
-            style: const TextStyle(fontWeight: FontWeight.bold, color: textDark),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _exerciseItem(Exercise exercise) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Hareket görseli
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              bottomLeft: Radius.circular(16),
-            ),
-            child: Image.network(
-              exercise.imageUrl,
-              width: 85,
-              height: 85,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: 85, height: 85,
-                color: cardBeige,
-                child: const Icon(Icons.image_not_supported_outlined, color: Colors.grey),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    exercise.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textDark),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    exercise.detail,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: primaryGreen.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      exercise.isTimeBased ? "Süre bazlı" : "${exercise.targetReps} tekrar",
-                      style: const TextStyle(color: primaryGreen, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
-            child: Icon(Icons.play_circle_fill, color: Colors.grey, size: 28),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCameraModal(BuildContext context) {
-    final exercises = _program!['exercises'] as List<Exercise>;
+  // --- KAMERA MODAL ---
+  void _showCameraModal(BuildContext context, Exercise exercise) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -596,29 +488,59 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 5,
+              width: 40,
+              height: 5,
               decoration: BoxDecoration(
                 color: Colors.grey[300],
                 borderRadius: BorderRadius.circular(10),
               ),
+            ),
+            const SizedBox(height: 20),
+            // Egzersiz başlığı
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cardBeige,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(exercise.icon, color: primaryGreen),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: textDark,
+                        ),
+                      ),
+                      Text(
+                        exercise.detail,
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             const Text(
               "Egzersizi Nasıl Yapmak İstiyorsun?",
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: textDark,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              "Kamera ile hareketlerin doğruluğu ölçülür.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
 
             // Kamera AÇIK
             GestureDetector(
@@ -628,48 +550,55 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => CameraExerciseScreen(
-                      exercises: exercises,
+                      exercises: [exercise],
                       cameraEnabled: true,
                     ),
                   ),
                 );
               },
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: primaryGreen.withOpacity(0.4), width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: primaryGreen.withOpacity(0.4), width: 1.5),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: primaryGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.videocam_rounded, color: primaryGreen, size: 28),
+                      child: const Icon(Icons.videocam_rounded,
+                          color: primaryGreen, size: 26),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 14),
                     const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Kamera Açık",
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textDark)),
-                          SizedBox(height: 4),
-                          Text("Hareketlerin doğruluk oranı ölçülür.",
-                              style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          Text('Kamera Açık',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: textDark)),
+                          SizedBox(height: 3),
+                          Text('Hareketlerin doğruluğu ölçülür.',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+                    const Icon(Icons.arrow_forward_ios_rounded,
+                        size: 14, color: Colors.grey),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
 
             // Kamera KAPALI
             GestureDetector(
@@ -679,43 +608,49 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => CameraExerciseScreen(
-                      exercises: exercises,
+                      exercises: [exercise],
                       cameraEnabled: false,
                     ),
                   ),
                 );
               },
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.grey[300]!, width: 1.5),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(Icons.videocam_off_rounded, color: Colors.grey[600], size: 28),
+                      child: Icon(Icons.videocam_off_rounded,
+                          color: Colors.grey[600], size: 26),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Kamera Kapalı",
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textDark)),
-                          const SizedBox(height: 4),
-                          Text("Doğruluk oranı %0 olarak kaydedilir.",
-                              style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                          const Text('Kamera Kapalı',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: textDark)),
+                          const SizedBox(height: 3),
+                          Text('Doğruluk oranı %0 olarak kaydedilir.',
+                              style: TextStyle(
+                                  color: Colors.grey[500], fontSize: 12)),
                         ],
                       ),
                     ),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey[400]),
+                    Icon(Icons.arrow_forward_ios_rounded,
+                        size: 14, color: Colors.grey[400]),
                   ],
                 ),
               ),
