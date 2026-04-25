@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // <--- EKLENDİ
-import 'package:cloud_firestore/cloud_firestore.dart'; // <--- EKLENDİ
-import 'package:google_sign_in/google_sign_in.dart'; // <--- EKLENDİ
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart'; // <--- EKLENDİ
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'home_screen.dart';
 
 // --- ANA EKRAN (WELCOME SCREEN) ---
@@ -19,22 +18,21 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
   bool _isEmailFormVisible = false;
   bool _isTermsAccepted = false;
 
-  // <--- EKLENDİ: Firebase ve Backend Değişkenleri
   bool _isLoading = false;
   bool _isLoginMode = true;
 
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _firstNameController = TextEditingController(); // <--- EKLENDİ
-  final _lastNameController = TextEditingController(); // <--- EKLENDİ
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _firstNameController.dispose(); // <--- EKLENDİ
-    _lastNameController.dispose(); // <--- EKLENDİ
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     super.dispose();
   }
 
@@ -73,22 +71,21 @@ class _HealthAppWelcomeScreenState extends State<HealthAppWelcomeScreen> {
 
         // Firestore'a kullanıcı bilgilerini kaydet
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
-  'firstName': _firstNameController.text.trim(),
-  'lastName': _lastNameController.text.trim(),
-  'email': email,
-  'currentStreak': 0,
-  'onboardingDone': false, // EKLE
-  'createdAt': FieldValue.serverTimestamp(),
-});;
+          'firstName': _firstNameController.text.trim(),
+          'lastName': _lastNameController.text.trim(),
+          'email': email,
+          'currentStreak': 0,
+          'onboardingDone': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       }
 
-      // Arkadaşının eklediği SharedPreferences kaydı (Giriş yapıldı olarak işaretle)
       final prefs = await SharedPreferences.getInstance();
-await prefs.setBool('is_logged_in', true);
-await prefs.remove('user_scenario'); // EKLE
-await prefs.remove('program_type');  // EKLE
-await prefs.remove('doctor_code');   // EKLE
-await prefs.remove('sport_category'); // EKLE
+      await prefs.setBool('is_logged_in', true);
+      await prefs.remove('user_scenario');
+      await prefs.remove('program_type');
+      await prefs.remove('doctor_code');
+      await prefs.remove('sport_category');
 
       _navigateToHome();
     } on FirebaseAuthException catch (e) {
@@ -103,36 +100,29 @@ await prefs.remove('sport_category'); // EKLE
   // --- Google ile Giriş İşlemi (V7) ---
   Future<void> _signInWithGoogle() async {
     try {
-      // 1. Google Giriş Akışını Başlat (V7 sürümü için instance üzerinden)
       await GoogleSignIn.instance.initialize();
       final GoogleSignInAccount? googleUser = await GoogleSignIn.instance
           .authenticate();
 
-      if (googleUser == null) return; // Kullanıcı vazgeçerse çık
+      if (googleUser == null) return;
 
-      // 2. Google'dan Kimlik Bilgilerini Al
-      // NOT: Yeni sürümde authentication artık bir Future değil, direkt erişiliyor.
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-      // Firebase için gerekli olan idToken'ı kullanıyoruz
       final AuthCredential credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
       );
 
-      // 3. Firebase ile Giriş Yap
       final UserCredential userCredential = await FirebaseAuth.instance
           .signInWithCredential(credential);
       final User? user = userCredential.user;
 
       if (user != null) {
-        // 4. Firestore'da kullanıcı dökümanı var mı kontrol et
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
 
         if (!userDoc.exists) {
-          // İlk kez geliyorsa Google bilgilerini Firestore'a kaydet
           List<String> nameParts = (user.displayName ?? "Değerli Kullanıcı")
               .split(" ");
           String firstName = nameParts.first;
@@ -152,11 +142,9 @@ await prefs.remove('sport_category'); // EKLE
               });
         }
 
-        // 5. SharedPreferences kaydı (Giriş durumu takibi için)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_logged_in', true);
 
-        // 6. Ana Sayfaya Yönlendir
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -171,34 +159,6 @@ await prefs.remove('sport_category'); // EKLE
           context,
         ).showSnackBar(SnackBar(content: Text("Giriş yapılamadı: $e")));
       }
-    }
-  }
-
-  // --- Facebook ile Giriş İşlemi ---
-  Future<void> _signInWithFacebook() async {
-    setState(() => _isLoading = true);
-    try {
-      final LoginResult result = await FacebookAuth.instance.login();
-      if (result.status == LoginStatus.success) {
-        final credential = FacebookAuthProvider.credential(
-          result.accessToken!.tokenString,
-        );
-        await FirebaseAuth.instance.signInWithCredential(credential);
-
-        // Arkadaşının eklediği SharedPreferences kaydı
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('is_logged_in', true);
-
-        _navigateToHome();
-      } else if (result.status == LoginStatus.cancelled) {
-        // İptal edildi
-      } else {
-        _showError("facebook-hata");
-      }
-    } catch (e) {
-      _showError("facebook-hata");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -223,8 +183,6 @@ await prefs.remove('sport_category'); // EKLE
       errorMessage = "Bu e-posta adresi zaten kullanımda.";
     else if (errorCode == 'google-hata')
       errorMessage = "Google ile giriş yapılamadı.";
-    else if (errorCode == 'facebook-hata')
-      errorMessage = "Facebook ile giriş yapılamadı.";
     else if (errorCode == 'beklenmedik-hata')
       errorMessage = "Sunucu bağlantı hatası oluştu.";
 
@@ -241,7 +199,6 @@ await prefs.remove('sport_category'); // EKLE
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // <--- DİNAMİK YÜKSEKLİK: Kayıt modu açıksa formu uzat
     final double targetHeight = _isEmailFormVisible
         ? (_isLoginMode ? 0.55 : 0.70)
         : 0.35;
@@ -253,36 +210,33 @@ await prefs.remove('sport_category'); // EKLE
         fit: StackFit.expand,
         children: [
           // 1. KATMAN: Arkaplan Görseli
-          Image.network(
-            'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1520&q=80',
+          Image.asset(
+            'assets/logo/rehavision_arkaplan.png',
             fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                color: const Color(0xFF4A6849),
-                child: const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              );
-            },
+            errorBuilder: (_, __, ___) => Container(
+              color: const Color(0xFF4A6849),
+            ),
           ),
 
-          // 2. KATMAN: Karartma
+          // 2. KATMAN: Karartma — sadece alt yarıda hafif gradient
+          // (üst ve orta tamamen şeffaf → arka plan görseli net görünür,
+          // sadece metnin okunabilmesi için altta yumuşak bir karartma var).
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.15),
-                  Colors.black.withOpacity(0.75),
+                  Colors.transparent,
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.45),
                 ],
-                stops: const [0.3, 1.0],
+                stops: const [0.0, 0.55, 1.0],
               ),
             ),
           ),
 
-          // 3. KATMAN: Ana Başlıklar (ORTALANMIŞ - Arkadaşının Tasarımı)
+          // 3. KATMAN: Ana Başlıklar
           AnimatedOpacity(
             duration: const Duration(milliseconds: 400),
             opacity: _isLoginPanelVisible ? 0.0 : 1.0,
@@ -303,6 +257,13 @@ await prefs.remove('sport_category'); // EKLE
                       fontSize: 40,
                       fontWeight: FontWeight.w300,
                       letterSpacing: 1.1,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
                     ),
                   ),
                   SizedBox(height: 15),
@@ -310,9 +271,16 @@ await prefs.remove('sport_category'); // EKLE
                     "Evinin huzurunda, bedeninle barışık,\ndaha sağlıklı bir yaşama adım at.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: Colors.white,
                       fontSize: 17,
                       height: 1.4,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 6,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -320,7 +288,7 @@ await prefs.remove('sport_category'); // EKLE
             ),
           ),
 
-          // 4. KATMAN: Kaydırma Göstergesi (Ekranın ALT YARISI)
+          // 4. KATMAN: Kaydırma Göstergesi
           if (!_isLoginPanelVisible)
             Positioned(
               bottom: 0,
@@ -445,7 +413,6 @@ await prefs.remove('sport_category'); // EKLE
             ),
           ),
 
-          // <--- EKLENDİ: Yükleme Ekranı Overlay
           if (_isLoading && !_isEmailFormVisible)
             Container(
               color: Colors.black.withOpacity(0.3),
@@ -473,7 +440,7 @@ await prefs.remove('sport_category'); // EKLE
           ),
         ),
         const SizedBox(height: 25),
-        _buildFullWidthSocialButton(
+        _buildSocialButton(
           icon: Icons.email_outlined,
           color: Colors.grey[800]!,
           label: "E-posta ile devam et",
@@ -484,26 +451,11 @@ await prefs.remove('sport_category'); // EKLE
           },
         ),
         const SizedBox(height: 15),
-        Row(
-          children: [
-            Expanded(
-              child: _buildSocialButton(
-                icon: Icons.g_mobiledata_rounded,
-                color: const Color(0xFFDB4437),
-                label: "Google",
-                onTap: _signInWithGoogle, // <--- Dinamik fonksiyon
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: _buildSocialButton(
-                icon: Icons.facebook,
-                color: const Color(0xFF4267B2),
-                label: "Facebook",
-                onTap: _signInWithFacebook, // <--- Dinamik fonksiyon
-              ),
-            ),
-          ],
+        _buildSocialButton(
+          icon: Icons.g_mobiledata_rounded,
+          color: const Color(0xFFDB4437),
+          label: "Google ile devam et",
+          onTap: _signInWithGoogle,
         ),
       ],
     );
@@ -537,9 +489,7 @@ await prefs.remove('sport_category'); // EKLE
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  _isLoginMode
-                      ? "Giriş Yap"
-                      : "Kayıt Ol", // <--- Dinamik Başlık
+                  _isLoginMode ? "Giriş Yap" : "Kayıt Ol",
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -549,7 +499,6 @@ await prefs.remove('sport_category'); // EKLE
             ),
             const SizedBox(height: 20),
 
-            // <--- EKLENDİ: Ad ve Soyad Alanları (Sadece Kayıt modunda görünür)
             if (!_isLoginMode)
               Padding(
                 padding: const EdgeInsets.only(bottom: 15),
@@ -641,7 +590,6 @@ await prefs.remove('sport_category'); // EKLE
             ),
             const SizedBox(height: 20),
 
-            // <--- GÜNCELLENDİ: Sadece Kayıt Modundayken Şartlar Çıksın
             if (!_isLoginMode)
               Padding(
                 padding: const EdgeInsets.only(bottom: 20),
@@ -706,7 +654,6 @@ await prefs.remove('sport_category'); // EKLE
             SizedBox(
               height: 50,
               child: ElevatedButton(
-                // Login modundaysa veya şartlar kabul edildiyse butonu aktif et
                 onPressed: (_isLoginMode || _isTermsAccepted) && !_isLoading
                     ? _processEmailAuth
                     : null,
@@ -727,7 +674,7 @@ await prefs.remove('sport_category'); // EKLE
                         ),
                       )
                     : Text(
-                        _isLoginMode ? "GİRİŞ YAP" : "KAYDI TAMAMLA", // Dinamik
+                        _isLoginMode ? "GİRİŞ YAP" : "KAYDI TAMAMLA",
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -737,7 +684,6 @@ await prefs.remove('sport_category'); // EKLE
               ),
             ),
 
-            // <--- EKLENDİ: Giriş Yap / Kayıt Ol Geçiş Butonu
             TextButton(
               onPressed: () {
                 setState(() {
@@ -778,28 +724,6 @@ await prefs.remove('sport_category'); // EKLE
         _isTermsAccepted = true;
       });
     }
-  }
-
-  Widget _buildFullWidthSocialButton({
-    required IconData icon,
-    required Color color,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: color,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        side: BorderSide(color: color.withOpacity(0.3)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      ),
-      icon: Icon(icon, size: 22),
-      label: Text(
-        label,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
-    );
   }
 
   Widget _buildSocialButton({
