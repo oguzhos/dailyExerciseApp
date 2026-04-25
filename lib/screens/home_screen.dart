@@ -29,7 +29,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
   int _streakCount = 0;
   int _todayAccuracy = 0;
   int _missedDays = 0;
-  String _userName = ''; // Lokal kullanıcı adı yedeği
+  String _userName = ''; // Kullanıcı adı burada tutulacak
 
   @override
   void initState() {
@@ -42,32 +42,41 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
     final history = await WorkoutHistoryService.getHistory();
     final prefs = await SharedPreferences.getInstance();
     int onboardingDone = prefs.getInt('user_scenario') ?? 0;
-    final userName = prefs.getString('user_name') ?? '';
+    String userName = prefs.getString('user_name') ?? '';
 
-    // --- YENİ EKLENEN: CİHAZ SIFIRLANMIŞSA BULUTTAN KURTARMA OPERASYONU ---
+    // --- CİHAZ SIFIRLANMIŞSA BULUTTAN KURTARMA VE İSİM ÇEKME OPERASYONU ---
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null && onboardingDone == 0) {
+    if (user != null) {
       try {
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
-        if (userDoc.exists && userDoc.data()?['onboardingDone'] == true) {
-          // Kullanıcı önceden onboarding yapmış, bilgileri cihaza geri yükle!
+
+        if (userDoc.exists) {
           final data = userDoc.data()!;
-          onboardingDone = 1; // Başlangıç adımını atla
-          await prefs.setInt('user_scenario', 1);
-          await prefs.setString(
-            'program_type',
-            data['program_type'] ?? 'sport',
-          );
-          if (data['doctor_code'] != null)
-            await prefs.setString('doctor_code', data['doctor_code']);
-          if (data['sport_category'] != null)
-            await prefs.setString('sport_category', data['sport_category']);
+
+          // KRİTİK EKLEME: İsmi veritabanından SADECE BİR KERE çekip değişkene atıyoruz
+          userName = data['firstName'] ?? "Yolcu";
+
+          // Cihaz sıfırlanmışsa onboarding kurtarma operasyonu
+          if (onboardingDone == 0 && data['onboardingDone'] == true) {
+            onboardingDone = 1; // Başlangıç adımını atla
+            await prefs.setInt('user_scenario', 1);
+            await prefs.setString(
+              'program_type',
+              data['program_type'] ?? 'sport',
+            );
+            if (data['doctor_code'] != null) {
+              await prefs.setString('doctor_code', data['doctor_code']);
+            }
+            if (data['sport_category'] != null) {
+              await prefs.setString('sport_category', data['sport_category']);
+            }
+          }
         }
       } catch (e) {
-        debugPrint("Buluttan onboarding verisi çekilemedi: $e");
+        debugPrint("Buluttan veri çekilemedi: $e");
       }
     }
     // ----------------------------------------------------------------------
@@ -156,7 +165,7 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
       _streakCount = streakCount;
       _todayAccuracy = todayAccuracy;
       _missedDays = missedDays;
-      _userName = userName;
+      _userName = userName; // İsim UI'a yansıtılıyor
     });
 
     // 6. FIREBASE'İ GÜNCELLE
@@ -179,44 +188,14 @@ class _MainHealthScreenState extends State<MainHealthScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser?.uid)
-                  .get(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Text(
-                    "Merhaba, ...",
-                    style: TextStyle(
-                      color: AppColors.textDark,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 22,
-                    ),
-                  );
-                }
-
-                if (snapshot.hasData && snapshot.data!.exists) {
-                  String firstName = snapshot.data!['firstName'] ?? "Yolcu";
-                  return Text(
-                    "Merhaba, $firstName",
-                    style: const TextStyle(
-                      color: AppColors.textDark,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 22,
-                    ),
-                  );
-                }
-
-                return Text(
-                  _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 22,
-                  ),
-                );
-              },
+            // GÜNCELLENEN KISIM: FutureBuilder kaldırıldı, değişken kullanıldı
+            Text(
+              _userName.isEmpty ? "Merhaba!" : "Merhaba, $_userName",
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+              ),
             ),
             const Text(
               "Bugün kendini nasıl hissediyorsun?",
